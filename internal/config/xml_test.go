@@ -38,7 +38,17 @@ func TestXmlDecode(t *testing.T) {
         <token type="Punctuation"/>
         <pop depth="1"/>
       </rule>
-    </state> 
+			<rule pattern="&#34;">
+        <bygroups>
+          <usingself state="root"/>
+          <token type="NameFunction"/>
+          <usingself state="root"/>
+          <usingself state="root"/>
+          <token type="Punctuation"/>
+        </bygroups>
+        <push state="function"/>
+      </rule>
+    </state>
   </rules>
 </lexer>`
 
@@ -70,7 +80,57 @@ func TestXmlDecode(t *testing.T) {
 		"image/x-xpixmap",
 	}
 	assert.Equal(mtypes, lex.Config.MimeTypes)
-	
+
 	assert.Equal(true, lex.Config.EnsureNL)
-	
+
+	expected := Rules{
+		States: []State{
+			{
+				Name: "statement",
+				Rules: []Rule{
+					{
+						Include: &Include{State: "whitespace"},
+					},
+					{
+						Include: &Include{State: "statements"},
+					},
+					{
+						Pattern: "[{}]",
+						Token:   &Token{Type: "Punctuation"},
+					},
+					{
+						Pattern: ";",
+						Token:   &Token{Type: "Punctuation"},
+						Pop:     &Pop{Depth: 1},
+					},
+					{
+						Pattern: "\"",
+						ByGroups: &ByGroups{
+							ByGroupsElements: []ByGroupsElement{
+								{
+									V: &UsingSelf{State: "root"},
+								},
+								{
+									V: &Token{Type: "NameFunction"},
+								},
+								{
+									V: &UsingSelf{State: "root"},
+								},
+								{
+									V: &UsingSelf{State: "root"},
+								},
+								{
+									V: &Token{Type: "Punctuation"},
+								},
+							},
+						},
+						Push: &Push{State: "function"},
+					},
+				},
+			},
+		},
+	}
+
+	assert.Equal(expected, lex.Rules)
+
 }

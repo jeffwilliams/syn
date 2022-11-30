@@ -1,5 +1,8 @@
 package config
 
+// Note: to find all the elements that are allowed to nest in the lexer xml files do something like:
+// srex -s '\n' ../../c.xml 'x/<rules.*\n(.*\n)*? *<\/rules>/ x/<[^ ]+/' | sort | uniq -c
+
 import (
 	"encoding/xml"
 	"fmt"
@@ -14,7 +17,7 @@ type Lexer struct {
 
 type Config struct {
 	Name      string   `xml:"name"`
-	Aliases     []string   `xml:"alias"`
+	Aliases   []string `xml:"alias"`
 	Filenames []string `xml:"filename"`
 	MimeTypes []string `xml:"mime_type"`
 	EnsureNL  bool     `xml:"ensure_nl"`
@@ -30,7 +33,7 @@ type State struct {
 }
 
 type Rule struct {
-	Pattern  string    `xml:"pattern"`
+	Pattern  string    `xml:"pattern,attr"`
 	Include  *Include  `xml:"include"`
 	Token    *Token    `xml:"token"`
 	Pop      *Pop      `xml:"pop"`
@@ -47,7 +50,7 @@ type Token struct {
 }
 
 type Pop struct {
-	Depth int `xml:",attr"`
+	Depth int `xml:"depth,attr"`
 }
 
 type Push struct {
@@ -55,13 +58,7 @@ type Push struct {
 }
 
 type ByGroups struct {
-	ByGroupsElement []ByGroupsElement `xml:",any"`
-
-	Token     []Token    `xml:"token"`
-	UsingSelf *UsingSelf `xml:"usingself"`
-	// How do decode intermixed XML tags:
-	// https://stackoverflow.com/questions/32187067/mixed-xml-decoding-in-golang-preserving-order
-
+	ByGroupsElements []ByGroupsElement `xml:",any"`
 }
 
 // ByGroups contains usingself and token elements intermixed, and the order matters.
@@ -74,9 +71,9 @@ func (m *ByGroupsElement) UnmarshalXML(d *xml.Decoder, start xml.StartElement) e
 
 	switch start.Name.Local {
 	case "token":
-		m.V = Token{}
+		m.V = &Token{}
 	case "usingself":
-		m.V = Token{}
+		m.V = &UsingSelf{}
 	default:
 		return fmt.Errorf("unknown element: %s", start)
 	}
@@ -84,20 +81,6 @@ func (m *ByGroupsElement) UnmarshalXML(d *xml.Decoder, start xml.StartElement) e
 	if err := d.DecodeElement(m.V, &start); err != nil {
 		return err
 	}
-
-	/* // Example
-	   switch start.Name.Local {
-	   case "token", "usingself":
-	       var e string
-	       if err := d.DecodeElement(&e, &start); err != nil {
-	           return err
-	       }
-	       m.Value = e
-	       m.Type = start.Name.Local
-	   default:
-	       return fmt.Errorf("unknown element: %s", start)
-	   }
-	*/
 	return nil
 }
 

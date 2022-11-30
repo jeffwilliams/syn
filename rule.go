@@ -7,19 +7,39 @@ import (
 
 type RuleSequence []Rule
 
-func (r RuleSequence) match(text []byte) ([]int, Rule) {
-	for _, rule := range r {
+func (r RuleSequence) match(text []byte) ([]int, *Rule) {
+	for i, rule := range r {
 		res := rule.match(text)
 		if res != nil {
-			return res, rule
+			return res, &r[i]
 		}
 	}
-	return nil, Rule{}
+	return nil, nil
 }
 
 type Rules struct {
 	// Map of state names to rules in that state
 	rules map[string]RuleSequence
+}
+
+func NewRules() Rules {
+	return Rules{rules: make(map[string]RuleSequence)}
+}
+
+func (r *Rules) AddRuleSequence(state string, seq RuleSequence) {
+	if seq == nil {
+		return
+	}
+
+	r.rules[state] = seq
+}
+
+func (r *Rules) RuleSequenceForState(state string) RuleSequence {
+	s, ok := r.rules[state]
+	if !ok {
+		return nil
+	}
+	return s
 }
 
 func (r Rules) Validate() error {
@@ -28,22 +48,22 @@ func (r Rules) Validate() error {
 	// Make sure any state that is referred to from a rule actually exists.
 	for _, rules := range r.rules {
 		for _, rule := range rules {
-			if _, ok := r.rules[rule.newState]; !ok {
-				missing = append(missing, rule.newState)
+			if _, ok := r.rules[rule.pushState]; !ok {
+				missing = append(missing, rule.pushState)
 			}
 		}
 	}
-	
+
 	err := r.makeMissingError(missing)
 	if err != nil {
 		return err
 	}
 
-	// Make sure the root state exists	
-	if _, ok :=  r.rules["root"]; !ok {
+	// Make sure the root state exists
+	if _, ok := r.rules["root"]; !ok {
 		return fmt.Errorf("The root state is not defined")
 	}
-	
+
 	return nil
 }
 
@@ -56,9 +76,12 @@ func (r Rules) makeMissingError(missing []string) error {
 }
 
 type Rule struct {
-	pattern  *regexp.Regexp
-	tok      TokenType
-	newState string
+	pattern   *regexp.Regexp
+	tok       TokenType
+	pushState string
+	popDepth  int
+	byGroups  []byGroupElement
+	include   string
 }
 
 // Match attempts to match the rule. If it succeeds it returns a slice
@@ -70,7 +93,7 @@ func (r Rule) match(text []byte) []int {
 	return r.pattern.FindSubmatchIndex(text)
 }
 
-func (r Rule) mustPop() bool {
-	return r.newState == "#pop"
+type byGroupElement struct {
+	tok     TokenType
+	useSelf bool
 }
-
