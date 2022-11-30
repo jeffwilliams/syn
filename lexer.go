@@ -96,14 +96,26 @@ func (l *Lexer) Lex() []Token {
 	return toks
 }
 
-func (l *Lexer) LexInto(toks *[]Token) {
+func (l *Lexer) LexInto(toks *[]Token) error {
 	for {
-		t := l.Next()
-		*toks = append(*toks, t)
-		if t.Typ == Error || t.Typ == EOFType {
-			return
+		t, err := l.Next()
+		if err != nil {
+			return err
+		}
+		*toks = append(*toks, t...)
+		if l.containsErrorOrEof(*toks) {
+			return nil
 		}
 	}
+}
+
+func (l *Lexer) containsErrorOrEof(toks []Token) bool {
+	for _, t := range toks {
+		if t.Typ == Error || t.Typ == EOFType {
+			return true
+		}
+	}
+	return false
 }
 
 func (l *Lexer) handleRuleState(rule *Rule) {
