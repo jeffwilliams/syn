@@ -94,6 +94,10 @@ func (r Rule) match(text []byte) []int {
 }
 
 type byGroupElement struct {
-	tok     TokenType
-	useSelf bool
+	tok          TokenType
+	useSelfState string
+}
+
+func (b byGroupElement) IsUseSelf() bool {
+	return b.useSelfState != ""
 }

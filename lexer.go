@@ -2,10 +2,9 @@ package syn
 
 import (
 	"fmt"
+	"github.com/jeffwilliams/syn/internal/config"
 	"os"
 	"regexp"
-
-	"github.com/jeffwilliams/syn/internal/config"
 )
 
 type Lexer struct {
@@ -38,7 +37,18 @@ func NewLexerFromXML(textToHighlight []byte, xmlLexerConfigFile string) (*Lexer,
 	return bld.Build()
 }
 
+func (l *Lexer) PushState(state string) error {
+	s := l.rules.RuleSequenceForState(state)
+	if s == nil {
+		return fmt.Errorf("No state %s", state)
+	}
+	l.state.stack.Push(s)
+	return nil
+}
+
 func (l *Lexer) Next() ([]Token, error) {
+	l.pushRootStateIfNeeded()
+
 	if l.state.index >= len(l.text) {
 		return []Token{{Typ: EOFType, Value: nil}}, nil
 	}
@@ -63,6 +73,23 @@ func (l *Lexer) Next() ([]Token, error) {
 	return toks, nil
 }
 
+func (l *Lexer) pushRootStateIfNeeded() {
+	fmt.Printf("pushRootStateIfNeeded called\n")
+	if l == nil {
+		fmt.Printf("lexer is nil\n")
+	}
+	if l.state.stack == nil {
+		fmt.Printf("stack is nil\n")
+	}
+
+	if l.state.stack.Len() == 0 {
+		s := l.rules.RuleSequenceForState("root")
+		if s != nil {
+			l.state.stack.Push(s)
+		}
+	}
+}
+
 func (l *Lexer) tokensOfMatch(match []int, rule *Rule) ([]Token, error) {
 	if rule.byGroups != nil {
 		if len(match)/2 < len(rule.byGroups) {
@@ -74,8 +101,9 @@ func (l *Lexer) tokensOfMatch(match []int, rule *Rule) ([]Token, error) {
 		for i, g := range rule.byGroups {
 			groupIndex := (i + 1) * 2
 
-			if g.useSelf {
+			if g.IsUseSelf() {
 				lex := NewLexer(l.matchText(match[groupIndex:]), l.rules)
+				lex.PushState(g.useSelfState)
 				lex.LexInto(&toks)
 			} else {
 				// TODO make a token here
@@ -157,27 +185,6 @@ type State struct {
 	index int
 }
 
-type Stack struct {
-	data []RuleSequence
-}
-
-func NewStack() *Stack {
-	return &Stack{
-		data: make([]RuleSequence, 0),
-	}
-}
-
-func (s Stack) Push(list RuleSequence) {
-}
-
-func (s Stack) Pop(count int) (list RuleSequence) {
-	return nil
-}
-
-func (s Stack) Top() (list RuleSequence) {
-	return nil
-}
-
 type Action struct {
 	typ       ActionType
 	tokenType TokenType
@@ -200,13 +207,19 @@ func newLexerBuilder(cfg *config.Lexer) lexerBuilder {
 		cfg: cfg,
 		lexer: &Lexer{
 			rules: NewRules(),
+			state: State{stack: NewStack()},
 		},
 	}
 }
 
 func (lb *lexerBuilder) Build() (*Lexer, error) {
 
-	err := lb.build()
+	err := lb.validate()
+	if err != nil {
+		return nil, err
+	}
+
+	err = lb.build()
 	if err != nil {
 		return nil, err
 	}
@@ -214,6 +227,15 @@ func (lb *lexerBuilder) Build() (*Lexer, error) {
 	lb.resolveIncludes()
 
 	return lb.lexer, nil
+}
+
+func (lb *lexerBuilder) validate() error {
+	for _, s := range lb.cfg.Rules.States {
+		if s.Name == "root" {
+			return nil
+		}
+	}
+	return fmt.Errorf("No 'root' state is defined")
 }
 
 func (lb *lexerBuilder) build() error {
@@ -243,14 +265,16 @@ func (lb *lexerBuilder) ruleSequence(crs []config.Rule) (RuleSequence, error) {
 			return nil, err
 		}
 
-		typ, err := TokenTypeString(cr.Token.Type)
-		if err != nil {
-			return nil, err
-		}
-
 		r := Rule{
 			pattern: re,
-			tok:     typ,
+		}
+
+		if cr.Token != nil {
+			typ, err := TokenTypeString(cr.Token.Type)
+			if err != nil {
+				return nil, err
+			}
+			r.tok = typ
 		}
 
 		if cr.Pop != nil {
@@ -263,6 +287,23 @@ func (lb *lexerBuilder) ruleSequence(crs []config.Rule) (RuleSequence, error) {
 
 		if cr.Include != nil {
 			r.include = cr.Include.State
+		}
+
+		if cr.ByGroups != nil {
+			for _, e := range cr.ByGroups.ByGroupsElements {
+				ge := byGroupElement{}
+				switch v := e.V.(type) {
+				case *config.Token:
+					typ, err := TokenTypeString(v.Type)
+					if err != nil {
+						return nil, err
+					}
+					ge.tok = typ
+				case *config.UsingSelf:
+					ge.useSelfState = v.State
+				}
+				r.byGroups = append(r.byGroups, ge)
+			}
 		}
 
 		rules[i] = r
