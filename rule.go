@@ -2,16 +2,21 @@ package syn
 
 import (
 	"fmt"
-	"regexp"
+	"github.com/dlclark/regexp2"
 )
 
-type RuleSequence []Rule
+type State struct {
+	name  string
+	rules []Rule
+}
 
-func (r RuleSequence) match(text []byte) ([]int, *Rule) {
-	for i, rule := range r {
-		res := rule.match(text)
-		if res != nil {
-			return res, &r[i]
+func (r State) match(text []rune) (*regexp2.Match, *Rule) {
+	for i, rule := range r.rules {
+		debugf("State.match: for state %s trying rule %d /%s/\n", r.name, i, rule.pattern)
+		res, err := rule.match(text)
+		if res != nil && err == nil {
+			debugf("State.match: rule %d matched\n", i)
+			return res, &r.rules[i]
 		}
 	}
 	return nil, nil
@@ -19,35 +24,28 @@ func (r RuleSequence) match(text []byte) ([]int, *Rule) {
 
 type Rules struct {
 	// Map of state names to rules in that state
-	rules map[string]RuleSequence
+	rules map[string]State
 }
 
 func NewRules() Rules {
-	return Rules{rules: make(map[string]RuleSequence)}
+	return Rules{rules: make(map[string]State)}
 }
 
-func (r *Rules) AddRuleSequence(state string, seq RuleSequence) {
-	if seq == nil {
-		return
-	}
-
-	r.rules[state] = seq
+func (r *Rules) AddState(state State) {
+	r.rules[state.name] = state
 }
 
-func (r *Rules) RuleSequenceForState(state string) RuleSequence {
-	s, ok := r.rules[state]
-	if !ok {
-		return nil
-	}
-	return s
+func (r *Rules) Get(stateName string) (state State, ok bool) {
+	state, ok = r.rules[stateName]
+	return
 }
 
 func (r Rules) Validate() error {
 	var missing []string
 
 	// Make sure any state that is referred to from a rule actually exists.
-	for _, rules := range r.rules {
-		for _, rule := range rules {
+	for _, state := range r.rules {
+		for _, rule := range state.rules {
 			if _, ok := r.rules[rule.pushState]; !ok {
 				missing = append(missing, rule.pushState)
 			}
@@ -76,7 +74,7 @@ func (r Rules) makeMissingError(missing []string) error {
 }
 
 type Rule struct {
-	pattern   *regexp.Regexp
+	pattern   *regexp2.Regexp
 	tok       TokenType
 	pushState string
 	popDepth  int
@@ -89,8 +87,12 @@ type Rule struct {
 // leftmost match of the regular expression in b and the matches, if any, of
 // its subexpressions like regexp.FindSubmatchIndex.
 // Returns nil if there is no match.
-func (r Rule) match(text []byte) []int {
-	return r.pattern.FindSubmatchIndex(text)
+func (r Rule) match(text []rune) (*regexp2.Match, error) {
+	m, err := r.pattern.FindRunesMatch(text)
+	if m != nil && m.Index != 0 {
+		return nil, nil
+	}
+	return m, err
 }
 
 type byGroupElement struct {

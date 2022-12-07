@@ -2,26 +2,28 @@ package syn
 
 import (
 	"fmt"
-	"github.com/jeffwilliams/syn/internal/config"
 	"os"
-	"regexp"
+
+	"github.com/dlclark/regexp2"
+	"github.com/jeffwilliams/syn/internal/config"
 )
 
 type Lexer struct {
-	state State
-	text  []byte
+	state LexerState
+	text  []rune
 	rules Rules
+	depth int
 }
 
-func NewLexer(text []byte, rules Rules) *Lexer {
+func NewLexer(text []rune, rules Rules) *Lexer {
 	return &Lexer{
-		state: State{stack: NewStack()},
+		state: LexerState{stack: NewStack()},
 		text:  text,
 		rules: rules,
 	}
 }
 
-func NewLexerFromXML(textToHighlight []byte, xmlLexerConfigFile string) (*Lexer, error) {
+func NewLexerFromXML(textToHighlight []rune, xmlLexerConfigFile string) (*Lexer, error) {
 	// TODO: refactor this
 	f, err := os.Open(xmlLexerConfigFile)
 	if err != nil {
@@ -34,12 +36,18 @@ func NewLexerFromXML(textToHighlight []byte, xmlLexerConfigFile string) (*Lexer,
 	}
 
 	bld := newLexerBuilder(lexModel)
-	return bld.Build()
+	lex, err := bld.Build()
+	if err != nil {
+		return nil, err
+	}
+
+	lex.text = textToHighlight
+	return lex, nil
 }
 
 func (l *Lexer) PushState(state string) error {
-	s := l.rules.RuleSequenceForState(state)
-	if s == nil {
+	s, ok := l.rules.Get(state)
+	if !ok {
 		return fmt.Errorf("No state %s", state)
 	}
 	l.state.stack.Push(s)
@@ -50,12 +58,16 @@ func (l *Lexer) Next() ([]Token, error) {
 	l.pushRootStateIfNeeded()
 
 	if l.state.index >= len(l.text) {
+		debugf("Lexer.Next(%d): Current index %d is past the end of the text. Text has length %d",
+			l.depth, l.state.index, len(l.text))
 		return []Token{{Typ: EOFType, Value: nil}}, nil
 	}
 
 	rules := l.state.stack.Top()
+	debugf("Lexer.Next(%d): Matching top state %s", l.depth, rules.name)
 	match, rule := rules.match(l.text[l.state.index:])
 	if match == nil {
+		debugf("Lexer.Next(%d): No rule in the rule sequence matched", l.depth)
 		return []Token{{Error, nil}}, nil
 	}
 
@@ -63,59 +75,88 @@ func (l *Lexer) Next() ([]Token, error) {
 
 	toks, err := l.tokensOfMatch(match, rule)
 	if err != nil {
+		debugf("Lexer.Next(%d): got an error creating tokens from the match: %v", l.depth, err)
 		return nil, err
 	}
 
-	l.state.index = match[1]
+	g := match.GroupByNumber(0)
+	debugf("Lexer.Next(%d): Moving index from %d to %d (some text there is: '%s')", l.depth, l.state.index, l.state.index+g.Length,
+		aLittleText(l.text, l.state.index+g.Length))
+	l.state.index += g.Length
 
 	l.handleRuleState(rule)
 
+	debugf("Lexer.Next(%d): returning %d tokens", l.depth, len(toks))
 	return toks, nil
 }
 
-func (l *Lexer) pushRootStateIfNeeded() {
-	fmt.Printf("pushRootStateIfNeeded called\n")
-	if l == nil {
-		fmt.Printf("lexer is nil\n")
-	}
-	if l.state.stack == nil {
-		fmt.Printf("stack is nil\n")
+func aLittleText(r []rune, index int) string {
+	if index >= len(r) {
+		return ""
 	}
 
+	end := index + 5
+	if end >= len(r) {
+		end = len(r)
+	}
+
+	return string(r[index:end])
+
+}
+
+func (l *Lexer) pushRootStateIfNeeded() {
 	if l.state.stack.Len() == 0 {
-		s := l.rules.RuleSequenceForState("root")
-		if s != nil {
+		debugf("Lexer.pushRootStateIfNeeded(%d): Pushing root state", l.depth)
+
+		s, ok := l.rules.Get("root")
+		if ok {
 			l.state.stack.Push(s)
+		} else {
+			debugf("No root state found in lexer")
 		}
 	}
 }
 
-func (l *Lexer) tokensOfMatch(match []int, rule *Rule) ([]Token, error) {
-	if rule.byGroups != nil {
-		if len(match)/2 < len(rule.byGroups) {
-			return nil, fmt.Errorf("Rule has more actions in ByGroups than there are groups in the regular expression")
+func (l *Lexer) tokensOfMatch(match *regexp2.Match, rule *Rule) ([]Token, error) {
+	if rule.byGroups == nil {
+		if rule.tok == 0 {
+			debugf("Lexer.tokensOfMatch(%d): rule provides no token\n", l.depth)
+			return []Token{}, nil
 		}
 
-		toks := []Token{}
-
-		for i, g := range rule.byGroups {
-			groupIndex := (i + 1) * 2
-
-			if g.IsUseSelf() {
-				lex := NewLexer(l.matchText(match[groupIndex:]), l.rules)
-				lex.PushState(g.useSelfState)
-				lex.LexInto(&toks)
-			} else {
-				// TODO make a token here
-				t := Token{Typ: g.tok, Value: l.matchText(match[groupIndex:])}
-				toks = append(toks, t)
-			}
-		}
-
-		return toks, nil
+		debugf("Lexer.tokensOfMatch(%d): returning token for entire match\n", l.depth)
+		// Use entire match
+		return []Token{{Typ: rule.tok, Value: l.groupText(match.GroupByNumber(0))}}, nil
 	}
 
-	return []Token{{Typ: rule.tok, Value: l.matchText(match)}}, nil
+	if match.GroupCount() < len(rule.byGroups) {
+		return nil, fmt.Errorf("Rule has more actions in ByGroups than there are groups in the regular expression")
+	}
+
+	toks := []Token{}
+
+	debugf("Lexer.tokensOfMatch(%d): rule specified to classify by groups\n", l.depth)
+	for i, g := range rule.byGroups {
+		//groupIndex := (i + 1) * 2
+
+		groupText := l.groupText(match.GroupByNumber(i + 1))
+		if g.IsUseSelf() {
+			debugf("Lexer.tokensOfMatch(%d): bygroups %d is a use-self. Creating sub lexer\n", l.depth, i)
+			lex := NewLexer(groupText, l.rules)
+			lex.depth = l.depth + 1
+			lex.PushState(g.useSelfState)
+			lex.LexInto(&toks)
+			// Remove the final EOF token
+			toks = toks[:len(toks)-1]
+		} else {
+			debugf("Lexer.tokensOfMatch(%d): bygroups %d: appending token\n", l.depth, i)
+			t := Token{Typ: g.tok, Value: groupText}
+			toks = append(toks, t)
+		}
+	}
+
+	return toks, nil
+
 }
 
 func (l *Lexer) Lex() []Token {
@@ -132,6 +173,7 @@ func (l *Lexer) LexInto(toks *[]Token) error {
 		}
 		*toks = append(*toks, t...)
 		if l.containsErrorOrEof(*toks) {
+			debugf("Lexer.LexInto: tokens returned by Next contain EOF or Error token so returning")
 			return nil
 		}
 	}
@@ -152,6 +194,7 @@ func (l *Lexer) handleRuleState(rule *Rule) {
 	}
 
 	if rule.popDepth > 0 {
+		debugf("Lexer.handleRuleState(%d): Popping %d states", l.depth, rule.popDepth)
 		l.state.stack.Pop(rule.popDepth)
 		return
 	}
@@ -161,26 +204,28 @@ func (l *Lexer) handleRuleState(rule *Rule) {
 		msg := fmt.Sprintf("syn.Lexer: a rule refers to a state %s that doesn't exist", rule.pushState)
 		panic(msg)
 	}
+	debugf("Lexer.handleRuleState(%d): pushing state %s", l.depth, rule.pushState)
 	l.state.stack.Push(s)
 }
 
-func (l *Lexer) matchText(match []int) []byte {
-	return l.text[match[0]:match[1]]
+func (l *Lexer) groupText(g *regexp2.Group) []rune {
+	text := l.text[l.state.index:]
+	return text[g.Index : g.Index+g.Length]
 }
 
-func (l *Lexer) State() State {
+func (l *Lexer) LexerState() LexerState {
 	return l.state
 }
 
-func (l *Lexer) SetState(s State) {
+func (l *Lexer) SetLexerState(s LexerState) {
 	l.state = s
 }
 
-// State represents the state of the Lexer at some intermediate position in the lexing.
+// LexerState represents the state of the Lexer at some intermediate position in the lexing.
 // It determines what token should be matched next based on what has aleady been processed up to
 // a certain byte-position in the input text. It can be used to restart lexing from that same point
 // in the text.
-type State struct {
+type LexerState struct {
 	stack *Stack
 	index int
 }
@@ -207,7 +252,7 @@ func newLexerBuilder(cfg *config.Lexer) lexerBuilder {
 		cfg: cfg,
 		lexer: &Lexer{
 			rules: NewRules(),
-			state: State{stack: NewStack()},
+			state: LexerState{stack: NewStack()},
 		},
 	}
 }
@@ -243,24 +288,25 @@ func (lb *lexerBuilder) build() error {
 
 		seq, err := lb.ruleSequence(xmlState.Rules)
 		if err != nil {
-			return err
+			return fmt.Errorf("For state %s: %w", xmlState.Name, err)
 		}
 
-		lb.lexer.rules.AddRuleSequence(xmlState.Name, seq)
+		s := State{xmlState.Name, seq}
+		lb.lexer.rules.AddState(s)
 	}
 
 	return nil
 }
 
-func (lb *lexerBuilder) ruleSequence(crs []config.Rule) (RuleSequence, error) {
+func (lb *lexerBuilder) ruleSequence(crs []config.Rule) ([]Rule, error) {
 	rules := make([]Rule, len(crs))
 	for i, cr := range crs {
 		err := lb.checkRule(&cr)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("rule index %d: %w", i, err)
 		}
 
-		re, err := regexp.Compile(cr.Pattern)
+		re, err := regexp2.Compile(cr.Pattern, regexp2.None)
 		if err != nil {
 			return nil, err
 		}
@@ -308,7 +354,7 @@ func (lb *lexerBuilder) ruleSequence(crs []config.Rule) (RuleSequence, error) {
 
 		rules[i] = r
 	}
-	return RuleSequence(rules), nil
+	return rules, nil
 }
 
 func (lb *lexerBuilder) checkRule(r *config.Rule) error {
@@ -316,6 +362,10 @@ func (lb *lexerBuilder) checkRule(r *config.Rule) error {
 	// 1. A token and _either_ a push or pop
 	// 2. An Include
 	// 3. A ByGroups
+
+	if r.Pattern == "" && r.Push == nil && r.Include == nil {
+		return fmt.Errorf("Rule has no pattern and no push statement. This is not supported.")
+	}
 
 	if r.Pop != nil && r.Push != nil {
 		return fmt.Errorf("Rule contains both a push and a pop")
@@ -341,20 +391,20 @@ func (lb *lexerBuilder) checkRule(r *config.Rule) error {
 
 func (lb *lexerBuilder) resolveIncludes() error {
 
-	for i, seq := range lb.lexer.rules.rules {
+	for name, state := range lb.lexer.rules.rules {
 
 		// TODO: to reduce garbage, we could just build this when the first include is reached
 		// If there are none there is no need to make a new slice.
-		newSeq := RuleSequence(make([]Rule, 0, len(seq)))
+		newSeq := make([]Rule, 0, len(state.rules))
 
-		for _, rule := range seq {
+		for _, rule := range state.rules {
 			if rule.include != "" {
-				includeSeq := lb.lexer.rules.RuleSequenceForState(rule.include)
-				if includeSeq == nil {
+				includeState, ok := lb.lexer.rules.Get(rule.include)
+				if !ok {
 					return fmt.Errorf("A rule includes the state named '%s' but there is no such state in the lexer", rule.include)
 				}
 
-				for _, e := range includeSeq {
+				for _, e := range includeState.rules {
 					newSeq = append(newSeq, e)
 				}
 				continue
@@ -363,7 +413,7 @@ func (lb *lexerBuilder) resolveIncludes() error {
 			newSeq = append(newSeq, rule)
 		}
 
-		lb.lexer.rules.rules[i] = newSeq
+		lb.lexer.rules.rules[name] = State{name, newSeq}
 	}
 
 	return nil

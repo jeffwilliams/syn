@@ -14,14 +14,14 @@ func TestStack(t *testing.T) {
 	assert.Nil(s.Top())
 	assert.Equal(0, s.Len())
 
-	r := RuleSequence{}
+	r := State{}
 	s.Push(r)
 	assert.Equal(1, s.Len())
 	assert.Equal(r, s.Top())
 	s.Pop(1)
 	assert.Equal(0, s.Len())
 
-	r2 := RuleSequence{}
+	r2 := State{}
 	s.Push(r)
 	s.Push(r2)
 	assert.Equal(2, s.Len())
