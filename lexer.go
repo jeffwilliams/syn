@@ -9,10 +9,11 @@ import (
 )
 
 type Lexer struct {
-	state LexerState
-	text  []rune
-	rules Rules
-	depth int
+	state  LexerState
+	text   []rune
+	rules  Rules
+	depth  int
+	offset int
 }
 
 func NewLexer(text []rune, rules Rules) *Lexer {
@@ -68,7 +69,7 @@ func (l *Lexer) Next() ([]Token, error) {
 	match, rule := rules.match(l.text[l.state.index:])
 	if match == nil {
 		debugf("Lexer.Next(%d): No rule in the rule sequence matched", l.depth)
-		return []Token{{Error, nil}}, nil
+		return []Token{{Typ: Error, Value: nil}}, nil
 	}
 
 	// TODO: carriage returns?
@@ -87,6 +88,9 @@ func (l *Lexer) Next() ([]Token, error) {
 	l.handleRuleState(rule)
 
 	debugf("Lexer.Next(%d): returning %d tokens", l.depth, len(toks))
+	for i, t := range toks {
+		debugf("Lexer.Next(%d):   %d) %s", l.depth, i, t)
+	}
 	return toks, nil
 }
 
@@ -126,7 +130,7 @@ func (l *Lexer) tokensOfMatch(match *regexp2.Match, rule *Rule) ([]Token, error)
 
 		debugf("Lexer.tokensOfMatch(%d): returning token for entire match\n", l.depth)
 		// Use entire match
-		return []Token{{Typ: rule.tok, Value: l.groupText(match.GroupByNumber(0))}}, nil
+		return []Token{l.tokenOfEntireMatch(rule.tok, match)}, nil
 	}
 
 	if match.GroupCount() < len(rule.byGroups) {
@@ -143,20 +147,32 @@ func (l *Lexer) tokensOfMatch(match *regexp2.Match, rule *Rule) ([]Token, error)
 		if g.IsUseSelf() {
 			debugf("Lexer.tokensOfMatch(%d): bygroups %d is a use-self. Creating sub lexer\n", l.depth, i)
 			lex := NewLexer(groupText, l.rules)
+			lex.setOffset(l.state.index + match.GroupByNumber(i+1).Index)
 			lex.depth = l.depth + 1
 			lex.PushState(g.useSelfState)
 			lex.LexInto(&toks)
 			// Remove the final EOF token
 			toks = toks[:len(toks)-1]
 		} else {
+			start, end := l.boundsOfCapture(&match.GroupByNumber(i + 1).Capture)
 			debugf("Lexer.tokensOfMatch(%d): bygroups %d: appending token\n", l.depth, i)
-			t := Token{Typ: g.tok, Value: groupText}
+			t := Token{Typ: g.tok, Value: groupText, Start: start, End: end}
 			toks = append(toks, t)
 		}
 	}
 
 	return toks, nil
 
+}
+
+func (l *Lexer) tokenOfEntireMatch(typ TokenType, match *regexp2.Match) Token {
+	s, e := l.boundsOfCapture(&match.Group.Capture)
+	return Token{Typ: typ, Value: l.groupText(match.GroupByNumber(0)), Start: s, End: e}
+}
+
+func (l *Lexer) boundsOfCapture(match *regexp2.Capture) (start, end int) {
+	return l.state.index + l.offset + match.Index,
+		l.state.index + l.offset + match.Index + match.Length
 }
 
 func (l *Lexer) Lex() []Token {
@@ -219,6 +235,12 @@ func (l *Lexer) LexerState() LexerState {
 
 func (l *Lexer) SetLexerState(s LexerState) {
 	l.state = s
+}
+
+// setOffset sets a number that is added to the Start and End of each Token
+// Next() produces before it is returned.
+func (l *Lexer) setOffset(i int) {
+	l.offset = i
 }
 
 // LexerState represents the state of the Lexer at some intermediate position in the lexing.

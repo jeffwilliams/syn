@@ -1,8 +1,6 @@
 package syn
 
 import (
-	"log"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -28,14 +26,15 @@ int main() {
 
 	assert := assert.New(t)
 
-	lex, err := NewLexerFromXML([]rune(prog), "c.xml")
+	input := []rune(prog)
+	lex, err := NewLexerFromXML(input, "c.xml")
 	assert.Nil(err)
 	assert.NotNil(lex)
 	if err != nil {
 		t.FailNow()
 	}
 
-	DebugLogger = log.New(os.Stdout, "", 0)
+	//DebugLogger = log.New(os.Stdout, "", 0)
 
 	//t.Logf("Lexer is: %#v\n", lex)
 
@@ -46,7 +45,26 @@ int main() {
 		t.Logf("  %s\n", tok)
 	}
 
+	// Make sure tokens are consecutive (in terms of rune index) and
+	// the value matches the referenced indices
+	for i, tok := range tokens {
+		if tok.Typ == EOFType {
+			continue
+		}
+
+		assert.Equal(tok.Value, input[tok.Start:tok.End],
+			"token='%s' ref='%s' rawToken=(%+v)", string(tok.Value), string(input[tok.Start:tok.End]), tok)
+
+		if i == 0 {
+			continue
+		}
+
+		ptok := tokens[i-1]
+		assert.Equal(tok.Start, ptok.End)
+	}
+
 	assert.Equal([]Token{
+		{Typ: Text, Value: []rune("\n"), Start: 0, End: 1},
 		{Typ: Line, Value: []rune("#include")},
 	},
 		tokens)
