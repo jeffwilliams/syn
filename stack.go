@@ -31,3 +31,11 @@ func (s Stack) Top() (list State) {
 func (s Stack) Len() int {
 	return len(s.data)
 }
+
+func (s Stack) Clone() *Stack {
+	data := make([]State, len(s.data))
+	copy(data, s.data)
+	return &Stack{
+		data: data,
+	}
+}

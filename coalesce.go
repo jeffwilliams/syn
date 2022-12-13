@@ -49,3 +49,20 @@ func (c *coalescer) merge(tok *Token) {
 	c.accum.End = tok.End
 	c.accum.Value = c.accum.Value[0:c.accum.Length()]
 }
+
+func (c *coalescer) State() CoalescerState {
+	return CoalescerState{
+		accum:    c.accum,
+		accumSet: c.accumSet,
+	}
+}
+
+func (c *coalescer) SetState(s CoalescerState) {
+	c.accum = s.accum
+	c.accumSet = s.accumSet
+}
+
+type CoalescerState struct {
+	accum    Token
+	accumSet bool
+}

@@ -200,6 +200,7 @@ func (l *Lexer) nextInSublexer() (tok Token, err error) {
 	if tok.Typ == EOFType {
 		debugf("Lexer.nextInSublexer(%d): sublexer completed\n", l.depth)
 		// Sublexer completed. Are we still in gruops?
+		l.sublexers = l.sublexers[:len(l.sublexers)-1]
 		l.state.stage = stageWithinGroups
 		l.state.groupIndex++
 		debugf("Lexer.nextInSublexer(%d): Setting groupindex to %d (%d/%d)\n", l.depth, l.state.groupIndex, l.state.groupIndex+1, len(l.state.byGroups))
@@ -228,6 +229,13 @@ func aLittleText(r []rune, index int) string {
 }
 
 func (l *Lexer) pushRootStateIfNeeded() {
+	if l == nil {
+		debugf("Lexer.pushRootStateIfNeeded(%d): lexer is nil", l.depth)
+	}
+	if l.state.stack == nil {
+		debugf("Lexer.pushRootStateIfNeeded(%d): stack is nil", l.depth)
+	}
+
 	if l.state.stack.Len() == 0 {
 		debugf("Lexer.pushRootStateIfNeeded(%d): Pushing root state", l.depth)
 
@@ -309,24 +317,26 @@ func (l *Lexer) groupText(g *regexp2.Group) []rune {
 	return text[g.Index : g.Index+g.Length]
 }
 
-func (l *Lexer) LexerState() []LexerState {
+func (l *Lexer) State() []LexerState {
 	states := make([]LexerState, len(l.sublexers)+1)
 	states[0] = l.state
+	states[0].stack = l.state.stack.Clone()
 	for i, sl := range l.sublexers {
 		states[i+1] = sl.state
+		states[i+1].stack = sl.state.stack.Clone()
 	}
 
 	return states
 }
 
 // TODO: create the sublexers we need as well.
-func (l *Lexer) SetLexerState(s []LexerState) {
+func (l *Lexer) SetState(s []LexerState) {
 	// The lexers and sublexers all use the same rules because the only way to make
 	// a sublexer is through usingself (for now).
 	// So we can just clone the rules from the base lexer to all the sublexers.
 	l.state = s[0]
 
-	l.sublexers = make([]*Lexer, len(s))
+	l.sublexers = make([]*Lexer, len(s)-1)
 	for i, state := range s[1:] {
 		text := state.text
 
