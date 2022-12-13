@@ -1,6 +1,8 @@
 package syn
 
 import (
+	"log"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -34,7 +36,7 @@ int main() {
 		t.FailNow()
 	}
 
-	//DebugLogger = log.New(os.Stdout, "", 0)
+	DebugLogger = log.New(os.Stdout, "", 0)
 
 	//t.Logf("Lexer is: %#v\n", lex)
 
