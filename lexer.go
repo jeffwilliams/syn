@@ -58,100 +58,30 @@ func (l *Lexer) PushState(state string) error {
 }
 
 func (l *Lexer) Next() (Token, error) {
-	debugf("Lexer.Next(%d): called", l.depth)
 	l.pushRootStateIfNeeded()
 
-	if l.state.stage == stageReadyToMatch {
+	switch l.state.stage {
+	case stageReadyToMatch:
 		return l.nextInReadyToMatchStage()
-	} else if l.state.stage == stageWithinGroups {
+	case stageWithinGroups:
 		return l.nextInWithinGroupsStage()
-	} else if l.state.stage == stageRunningSublexer {
+	case stageRunningSublexer:
 		return l.nextInSublexer()
-	} else {
+	default:
 		return Token{}, fmt.Errorf("Unsupported lexer stage %d", l.state.stage)
 	}
-
-	/// OLD
-	/*
-	   	toks, err := l.tokensOfMatch(match, rule)
-	   	if err != nil {
-	   		debugf("Lexer.Next(%d): got an error creating tokens from the match: %v", l.depth, err)
-	   		return nil, err
-	   	}
-
-	   	g := match.GroupByNumber(0)
-	   	debugf("Lexer.Next(%d): Moving index from %d to %d (some text there is: '%s')", l.depth, l.state.index, l.state.index+g.Length,
-	   		aLittleText(l.state.text, l.state.index+g.Length))
-	   	l.state.index += g.Length
-
-	   	l.handleRuleState(rule)
-
-	   	debugf("Lexer.Next(%d): returning %d tokens", l.depth, len(toks))
-	   	for i, t := range toks {
-	   		debugf("Lexer.Next(%d):   %d) %s", l.depth, i, t)
-	   	}
-	   	return toks, nil
-	   }
-
-	   func (l *Lexer) nextInReadyToMatchStage() (tok Token, err error) {
-	   	if l.state.index >= len(l.state.text) {
-	   		debugf("Lexer.Next(%d): Current index %d is past the end of the text. Text has length %d",
-	   			l.depth, l.state.index, len(l.state.text))
-	   		return Token{{Typ: EOFType, Value: nil}}, nil
-	   	}
-
-	   	rules := l.state.stack.Top()
-	   	debugf("Lexer.Next(%d): Matching top state %s", l.depth, rules.name)
-	   	match, rule := rules.match(l.state.text[l.state.index:])
-	   	if match == nil {
-	   		debugf("Lexer.Next(%d): No rule in the rule sequence matched", l.depth)
-	   		return Token{{Typ: Error, Value: nil}}, nil
-	   	}
-
-	   	// TODO: carriage returns?
-
-	   	if rule.byGroups == nil {
-	   		if rule.tok == 0 {
-	   			debugf("Lexer.Next(%d): rule provides no token\n", l.depth)
-	   			tok = Token{}
-	   		}
-
-	   		debugf("Lexer.Next(%d): will return token for entire match\n", l.depth)
-	   		// Use entire match
-	   		tok = l.tokenOfEntireMatch(rule.tok, match)
-	   		g := match.GroupByNumber(0)
-	   		debugf("Lexer.Next(%d): Moving index from %d to %d (some text there is: '%s')", l.depth, l.state.index, l.state.index+g.Length,
-	   			aLittleText(l.state.text, l.state.index+g.Length))
-	   		l.state.index += g.Length
-	   		l.handleRuleState(rule)
-	   		debugf("Lexer.Next(%d): returning token %s", tok)
-	   		return
-	   	} else {
-
-	   		// Here we need to build the values in state.groups, set groupIndex to 0 and
-	   		// start walking the groups.
-	   		l.state.groups = make([][2]int, match.GroupCount())
-	   		for i, g := range match.Groups() {
-	   			l.state.groups[i] = [2]int{g.Index, g.Length}
-	   		}
-	   		l.state.groupIndex = 0
-	   		l.state.stage = stageWithinGroups
-	   		l.state.byGroups = rule.byGroups
-	   		return l.Next()
-	   	}
-	*/
 }
 
 func (l *Lexer) nextInReadyToMatchStage() (tok Token, err error) {
 	if l.state.index >= len(l.state.text) {
-		debugf("Lexer.Next(%d): Current index %d is past the end of the text. Text has length %d",
+		debugf("Lexer.Next(%d): Current index %d is past the end of the text. Text has length %d. Returning EOFType",
 			l.depth, l.state.index, len(l.state.text))
 		return Token{Typ: EOFType, Value: nil}, nil
 	}
 
-	rules := l.state.stack.Top()
-	debugf("Lexer.Next(%d): Matching a full rule in top state %s", l.depth, rules.name)
-	match, rule := rules.match(l.state.text[l.state.index:])
+	state := l.state.stack.Top()
+	debugf("Lexer.Next(%d): Matching a full rule in top state %s", l.depth, state.name)
+	match, rule := state.match(l.state.text[l.state.index:])
 	if match == nil {
 		debugf("Lexer.Next(%d): No rule in the rule sequence matched", l.depth)
 		return Token{Typ: Error, Value: nil}, nil
@@ -159,90 +89,103 @@ func (l *Lexer) nextInReadyToMatchStage() (tok Token, err error) {
 
 	// TODO: carriage returns?
 
-	if rule.byGroups == nil {
-		if rule.tok == 0 {
-			debugf("Lexer.Next(%d): rule provides no token\n", l.depth)
-			tok = Token{}
-		} else {
-			debugf("Lexer.Next(%d): will return token for entire match\n", l.depth)
-			// Use entire match
-			tok = l.tokenOfEntireMatch(rule.tok, match)
-			g := match.GroupByNumber(0)
-			debugf("Lexer.Next(%d): Moving index from %d to %d (some text there is: '%s')", l.depth, l.state.index, l.state.index+g.Length,
-				aLittleText(l.state.text, l.state.index+g.Length))
-			l.state.index += g.Length
-		}
-		l.handleRuleState(rule)
-
-		if rule.tok == 0 {
-			debugf("Lexer.Next(%d): recursing to generate token\n", l.depth)
-			return l.Next()
-		}
-
-		debugf("Lexer.Next(%d): returning token %s", l.depth, tok)
-		return
-	} else {
-
-		// Here we need to build the values in state.groups, set groupIndex to 0 and
-		// start walking the groups.
-		l.state.rule = rule
-		l.state.groups = make([][2]int, match.GroupCount())
-		for i, g := range match.Groups() {
-			debugf("Lexer.Next(%d): group %d in match is at %d of length %d", l.depth, i, g.Index, g.Length)
-			l.state.groups[i] = [2]int{g.Index, g.Length}
-		}
-		l.state.groupIndex = 0
-		l.state.stage = stageWithinGroups
-		l.state.byGroups = rule.byGroups
+	if rule.byGroups != nil {
+		l.prepareToIterateGroups(rule, match)
 		return l.Next()
+	}
+
+	if rule.tok == 0 {
+		debugf("Lexer.Next(%d): rule provides no token\n", l.depth)
+		tok = Token{}
+	} else {
+		debugf("Lexer.Next(%d): will return token for entire match\n", l.depth)
+		// Use entire match
+		tok = l.tokenOfEntireMatch(rule.tok, match)
+		g := match.GroupByNumber(0)
+		debugf("Lexer.Next(%d): Moving index from %d to %d (some text there is: '%s')", l.depth, l.state.index, l.state.index+g.Length,
+			aLittleText(l.state.text, l.state.index+g.Length))
+		l.state.index += g.Length
+	}
+	l.handleRuleState(rule)
+
+	if rule.tok == 0 {
+		debugf("Lexer.Next(%d): recursing to generate token\n", l.depth)
+		return l.Next()
+	}
+
+	debugf("Lexer.Next(%d): returning token %s", l.depth, tok)
+	return
+}
+
+func (l *Lexer) prepareToIterateGroups(matchingRule *Rule, match *regexp2.Match) {
+	l.state.rule = matchingRule
+	l.setCapturesFromMatch(match)
+	l.state.groupIndex = 0
+	l.state.stage = stageWithinGroups
+	l.state.byGroups = matchingRule.byGroups
+}
+
+func (l *Lexer) setCapturesFromMatch(match *regexp2.Match) {
+	l.state.groups = make([]capture, match.GroupCount())
+	for i, g := range match.Groups() {
+		debugf("Lexer.Next(%d): group %d in match is at %d of length %d", l.depth, i, g.Index, g.Length)
+		l.state.groups[i].start = g.Index
+		l.state.groups[i].length = g.Length
 	}
 }
 
 func (l *Lexer) nextInWithinGroupsStage() (tok Token, err error) {
-	debugf("Lexer.Next(%d): Will return the next group with index %d/%d", l.depth, l.state.groupIndex, len(l.state.byGroups))
+	debugf("Lexer.nextInWithinGroupsStage(%d): Will return the next group with index %d (%d/%d)", l.depth, l.state.groupIndex, l.state.groupIndex+1, len(l.state.byGroups))
 
 	byGroup := l.state.byGroups[l.state.groupIndex]
 	capture := l.state.groups[l.state.groupIndex+1]
 
 	text := l.state.text[l.state.index:]
-	groupText := text[capture[0] : capture[0]+capture[1]]
+	groupText := text[capture.start:capture.end()]
 	if byGroup.IsUseSelf() {
-		debugf("Lexer.Next(%d): bygroups %d is a use-self. Creating sub lexer\n", l.depth, l.state.groupIndex)
-		lex := NewLexer(groupText, l.rules)
-		lex.setOffset(l.state.index + capture[0])
-		lex.depth = l.depth + 1
-		lex.PushState(byGroup.useSelfState)
-		l.state.stage = stageRunningSublexer
-		l.sublexers = append(l.sublexers, lex)
-		// TODO: keep going here. What else do we need to store in the lexerState to be able to
-		// re-create this lexer? The rules are the same rules as the parent, so they can just be derived
-		// from the parent. The offset can be derived I think. The groupIndex must not be cleared
-		// since we need that to derive which byGroup we are in. The byGroups need to be stored.
-
-		///lex.LexInto(&toks)
-		// Remove the final EOF token
-		//toks = toks[:len(toks)-1]
+		debugf("Lexer.nextInWithinGroupsStage(%d): bygroups %d is a use-self. Creating sub lexer\n", l.depth, l.state.groupIndex)
+		l.prepareToUseSublexer(groupText, &capture, &byGroup)
 		return l.Next()
 	}
 
-	start, end := l.boundsOfGroup(capture[0], capture[1])
-	debugf("Lexer.tokensOfMatch(%d): bygroups %d: returning token\n", l.depth, l.state.groupIndex)
+	start, end := l.boundsOfGroup(capture.start, capture.length)
+	debugf("Lexer.nextInWithinGroupsStage(%d): bygroups %d: returning token\n", l.depth, l.state.groupIndex)
 	tok = Token{Typ: byGroup.tok, Value: groupText, Start: start, End: end}
 
 	l.state.groupIndex++
 
 	if l.state.groupIndex >= len(l.state.byGroups) {
-		debugf("Lexer.tokensOfMatch(%d): reached end of the groups, will switch to full match stage\n", l.depth)
+		debugf("Lexer.nextInWithinGroupsStage(%d): reached end of the groups, will switch to full match stage\n", l.depth)
 		l.handleRuleState(l.state.rule)
 		l.state.stage = stageReadyToMatch
-		l.state.index += l.state.groups[0][1] // Move past the length of the match
-		l.state.groups = l.state.groups[:0]
-		l.state.groupIndex = 0
-		l.state.byGroups = nil
-		l.state.rule = nil
+		l.state.index += l.state.groups[0].length // Move past the length of the match
+		l.clearGroupIterationInfo()
 	}
 
 	return tok, nil
+}
+
+func (l *Lexer) prepareToUseSublexer(groupText []rune, capture *capture, byGroup *byGroupElement) {
+	lex := NewLexer(groupText, l.rules)
+	lex.setOffset(l.state.index + capture.start)
+	lex.depth = l.depth + 1
+	lex.PushState(byGroup.useSelfState)
+	l.state.stage = stageRunningSublexer
+	l.sublexers = append(l.sublexers, lex)
+}
+
+func (l *Lexer) completeGroupIteration() {
+	l.handleRuleState(l.state.rule)
+	l.state.stage = stageReadyToMatch
+	l.state.index += l.state.groups[0].length // Move past the length of the match
+	l.clearGroupIterationInfo()
+}
+
+func (l *Lexer) clearGroupIterationInfo() {
+	l.state.groups = l.state.groups[:0]
+	l.state.groupIndex = 0
+	l.state.byGroups = nil
+	l.state.rule = nil
 }
 
 func (l *Lexer) nextInSublexer() (tok Token, err error) {
@@ -255,15 +198,14 @@ func (l *Lexer) nextInSublexer() (tok Token, err error) {
 	}
 
 	if tok.Typ == EOFType {
+		debugf("Lexer.nextInSublexer(%d): sublexer completed\n", l.depth)
 		// Sublexer completed. Are we still in gruops?
 		l.state.stage = stageWithinGroups
 		l.state.groupIndex++
+		debugf("Lexer.nextInSublexer(%d): Setting groupindex to %d (%d/%d)\n", l.depth, l.state.groupIndex, l.state.groupIndex+1, len(l.state.byGroups))
 		if l.state.groupIndex > len(l.state.byGroups) {
-			// Reached end of groups. Switch to regular state.
-			l.state.stage = stageReadyToMatch
-			l.state.groups = l.state.groups[:0]
-			l.state.groupIndex = 0
-			l.state.byGroups = nil
+			debugf("Lexer.nextInSublexer(%d): Reached end of groups, will switch to full match stage\n", l.depth)
+			l.completeGroupIteration()
 		}
 		return l.Next()
 	}
@@ -297,52 +239,6 @@ func (l *Lexer) pushRootStateIfNeeded() {
 		}
 	}
 }
-
-/*
-func (l *Lexer) tokensOfMatch(match *regexp2.Match, rule *Rule) ([]Token, error) {
-	if rule.byGroups == nil {
-		if rule.tok == 0 {
-			debugf("Lexer.tokensOfMatch(%d): rule provides no token\n", l.depth)
-			return []Token{}, nil
-		}
-
-		debugf("Lexer.tokensOfMatch(%d): returning token for entire match\n", l.depth)
-		// Use entire match
-		return []Token{l.tokenOfEntireMatch(rule.tok, match)}, nil
-	}
-
-	if match.GroupCount() < len(rule.byGroups) {
-		return nil, fmt.Errorf("Rule has more actions in ByGroups than there are groups in the regular expression")
-	}
-
-	toks := []Token{}
-
-	debugf("Lexer.tokensOfMatch(%d): rule specified to classify by groups\n", l.depth)
-	for i, g := range rule.byGroups {
-		//groupIndex := (i + 1) * 2
-
-		groupText := l.groupText(match.GroupByNumber(i + 1))
-		if g.IsUseSelf() {
-			debugf("Lexer.tokensOfMatch(%d): bygroups %d is a use-self. Creating sub lexer\n", l.depth, i)
-			lex := NewLexer(groupText, l.rules)
-			lex.setOffset(l.state.index + match.GroupByNumber(i+1).Index)
-			lex.depth = l.depth + 1
-			lex.PushState(g.useSelfState)
-			lex.LexInto(&toks)
-			// Remove the final EOF token
-			toks = toks[:len(toks)-1]
-		} else {
-			start, end := l.boundsOfCapture(&match.GroupByNumber(i + 1).Capture)
-			debugf("Lexer.tokensOfMatch(%d): bygroups %d: appending token\n", l.depth, i)
-			t := Token{Typ: g.tok, Value: groupText, Start: start, End: end}
-			toks = append(toks, t)
-		}
-	}
-
-	return toks, nil
-
-}
-*/
 
 func (l *Lexer) tokenOfEntireMatch(typ TokenType, match *regexp2.Match) Token {
 	s, e := l.boundsOfCapture(&match.Group.Capture)
@@ -465,10 +361,18 @@ type LexerState struct {
 	stage  stage
 	offset int
 
-	groups     [][2]int         // Groups from the last match. Used when we need to iterate over bygroups. Each entry is a start/end of group.
+	groups     []capture        // Groups from the last match. Used when we need to iterate over bygroups. Each entry is a start/end of group.
 	groupIndex int              // index for current group we are iterating over
 	byGroups   []byGroupElement // The "by groups" items defined in the rule that specify how to handle each group from the match
 	rule       *Rule            // Rule we are matching the groups for
+}
+
+type capture struct {
+	start, length int
+}
+
+func (c capture) end() int {
+	return c.start + c.length
 }
 
 type Action struct {
