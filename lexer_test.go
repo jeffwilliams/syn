@@ -23,7 +23,7 @@ int main() {
 	assert := assert.New(t)
 
 	input := []rune(prog)
-	lex, err := NewLexerFromXML(input, "test_data/c.xml")
+	lex, err := NewLexerFromXMLFile("test_data/c.xml")
 	assert.Nil(err)
 	assert.NotNil(lex)
 	if err != nil {
@@ -32,7 +32,7 @@ int main() {
 
 	//DebugLogger = log.New(os.Stdout, "", 0)
 
-	tokens, err := tokenize(Coalesce(lex))
+	tokens, err := tokenize(Coalesce(lex.Tokenise(input)))
 	if err != nil {
 		t.Fatalf("Tokenizing returned error: %v\n", err)
 	}
@@ -327,8 +327,7 @@ int main() {
 	assert := assert.New(t)
 
 	makeLexer := func() *Lexer {
-		input := []rune(prog)
-		lex, err := NewLexerFromXML(input, "test_data/c.xml")
+		lex, err := NewLexerFromXMLFile("test_data/c.xml")
 		assert.Nil(err)
 		assert.NotNil(lex)
 		if err != nil {
@@ -336,6 +335,8 @@ int main() {
 		}
 		return lex
 	}
+
+	input := []rune(prog)
 
 	// The idea here is to text that saving and restoring the state of a lexer works.
 	// We lex some of the input, then save and restore the state, then continue lexing.
@@ -345,7 +346,8 @@ int main() {
 		t.Logf("Tokenizing %d tokens, saving/restoring state, then continuing\n", i)
 
 		lex := makeLexer()
-		it := Coalesce(lex)
+		lit := lex.Tokenise(input)
+		it := Coalesce(lit)
 
 		tokens, err := tokenizeAtMost(it, i)
 		if err != nil {
@@ -353,7 +355,7 @@ int main() {
 		}
 
 		// Save state
-		state := lex.State()
+		state := lit.State()
 		coalState := it.(*coalescer).State()
 
 		// Tokenize all the rest of the tokens
@@ -363,7 +365,7 @@ int main() {
 		}
 
 		// Restore the state back to an earlier place
-		lex.SetState(state)
+		lit.SetState(state)
 		it.(*coalescer).SetState(coalState)
 
 		// Now tokenize from that place
