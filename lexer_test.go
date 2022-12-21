@@ -355,8 +355,7 @@ int main() {
 		}
 
 		// Save state
-		state := lit.State()
-		coalState := it.(*coalescer).State()
+		state := it.State()
 
 		// Tokenize all the rest of the tokens
 		_, err = tokenize(it)
@@ -365,8 +364,7 @@ int main() {
 		}
 
 		// Restore the state back to an earlier place
-		lit.SetState(state)
-		it.(*coalescer).SetState(coalState)
+		it.SetState(state)
 
 		// Now tokenize from that place
 		moreTokens, err := tokenize(it)

@@ -2,6 +2,8 @@ package syn
 
 type Iterator interface {
 	Next() (Token, error)
+	State() interface{}
+	SetState(state interface{})
 }
 
 type coalescer struct {
@@ -50,19 +52,24 @@ func (c *coalescer) merge(tok *Token) {
 	c.accum.Value = c.accum.Value[0:c.accum.Length()]
 }
 
-func (c *coalescer) State() CoalescerState {
+func (c *coalescer) State() interface{} {
 	return CoalescerState{
-		accum:    c.accum,
-		accumSet: c.accumSet,
+		accum:     c.accum,
+		accumSet:  c.accumSet,
+		iterState: c.it.State(),
 	}
 }
 
-func (c *coalescer) SetState(s CoalescerState) {
-	c.accum = s.accum
-	c.accumSet = s.accumSet
+func (c *coalescer) SetState(s interface{}) {
+	state := s.(CoalescerState)
+
+	c.accum = state.accum
+	c.accumSet = state.accumSet
+	c.it.SetState(state.iterState)
 }
 
 type CoalescerState struct {
-	accum    Token
-	accumSet bool
+	accum     Token
+	accumSet  bool
+	iterState interface{}
 }

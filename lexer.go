@@ -66,7 +66,7 @@ func NewLexerFromXML(rdr io.Reader) (*Lexer, error) {
 
 }
 
-func (l *Lexer) Tokenise(text []rune) *iterator {
+func (l *Lexer) Tokenise(text []rune) Iterator {
 	return newIterator(text, l.rules)
 }
 
@@ -316,7 +316,7 @@ func (it *iterator) groupText(g *regexp2.Group) []rune {
 	return text[g.Index : g.Index+g.Length]
 }
 
-func (it *iterator) State() []LexerState {
+func (it *iterator) State() interface{} {
 	states := make([]LexerState, len(it.sublexers)+1)
 	states[0] = it.state
 	states[0].stack = it.state.stack.Clone()
@@ -328,14 +328,17 @@ func (it *iterator) State() []LexerState {
 	return states
 }
 
-func (it *iterator) SetState(s []LexerState) {
+func (it *iterator) SetState(s interface{}) {
+
+	state := s.([]LexerState)
+
 	// The lexers and sublexers all use the same rules because the only way to make
 	// a sublexer is through usingself (for now).
 	// So we can just clone the rules from the base lexer to all the sublexers.
-	it.state = s[0]
+	it.state = state[0]
 
-	it.sublexers = make([]*iterator, len(s)-1)
-	for i, state := range s[1:] {
+	it.sublexers = make([]*iterator, len(state)-1)
+	for i, state := range state[1:] {
 		text := state.text
 
 		it.sublexers[i] = newIterator(text, it.rules)
