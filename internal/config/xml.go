@@ -21,6 +21,7 @@ type Config struct {
 	Filenames []string `xml:"filename"`
 	MimeTypes []string `xml:"mime_type"`
 	EnsureNL  bool     `xml:"ensure_nl"`
+	Priority  float32  `xml:"priority,omitempty"`
 }
 
 type Rules struct {
