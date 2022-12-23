@@ -19,7 +19,7 @@ func Coalesce(in Iterator) Iterator {
 }
 
 func (c *coalescer) Next() (tok Token, err error) {
-	if c.accumSet && c.accum.Typ == EOFType {
+	if c.accumSet && (c.accum.Typ == EOFType || c.accum.Typ == Error) {
 		return c.accum, nil
 	}
 
