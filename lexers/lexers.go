@@ -2,8 +2,10 @@ package lexers
 
 import (
 	"embed"
-	"github.com/jeffwilliams/syn"
+	"fmt"
 	"io/fs"
+
+	"github.com/jeffwilliams/syn"
 )
 
 //go:embed embedded
@@ -22,9 +24,12 @@ var GlobalLexerRegistry = func() *syn.LexerRegistry {
 	for _, path := range paths {
 		lex, err := syn.NewLexerFromXMLFS(embedded, path)
 		// TODO: save the errors here and allow retrieving them
-		if err == nil {
-			reg.Register(lex)
+		if err != nil {
+			fmt.Printf("Error loading lexer %s: %s\n", path, err)
+			continue
 		}
+		reg.Register(lex)
+
 	}
 	return reg
 }()

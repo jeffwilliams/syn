@@ -76,7 +76,8 @@ func newLexerBuilder(cfg *config.Lexer) lexerBuilder {
 	return lexerBuilder{
 		cfg: cfg,
 		lexer: &Lexer{
-			rules: NewRules(),
+			rules:  NewRules(),
+			config: cfg,
 		},
 	}
 }

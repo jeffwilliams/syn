@@ -1,11 +1,5 @@
 package syn
 
-type Iterator interface {
-	Next() (Token, error)
-	State() interface{}
-	SetState(state interface{})
-}
-
 type coalescer struct {
 	it       Iterator
 	accum    Token
@@ -19,7 +13,7 @@ func Coalesce(in Iterator) Iterator {
 }
 
 func (c *coalescer) Next() (tok Token, err error) {
-	if c.accumSet && (c.accum.Typ == EOFType || c.accum.Typ == Error) {
+	if c.accumSet && (c.accum.Type == EOFType || c.accum.Type == Error) {
 		return c.accum, nil
 	}
 
@@ -35,7 +29,7 @@ func (c *coalescer) Next() (tok Token, err error) {
 			continue
 		}
 
-		if c.accum.Typ == tok.Typ {
+		if c.accum.Type == tok.Type {
 			c.merge(&tok)
 			continue
 		}

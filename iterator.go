@@ -6,6 +6,12 @@ import (
 	"github.com/dlclark/regexp2"
 )
 
+type Iterator interface {
+	Next() (Token, error)
+	State() interface{}
+	SetState(state interface{})
+}
+
 type iterator struct {
 	// state stores the state of this Lexer at the current point in the lexing.
 	// Element 0 is the state of this lexer, and 1 and above are the state of
@@ -90,7 +96,7 @@ func (i *iterator) nextInReadyToMatchStage() (tok Token, err error) {
 	if i.state.index >= len(i.state.text) {
 		debugf("iterator.nextInReadyToMatchStage(%d): Current index %d is past the end of the text. Text has length %d. Returning EOFType",
 			i.depth, i.state.index, len(i.state.text))
-		return Token{Typ: EOFType, Value: nil}, nil
+		return Token{Type: EOFType, Value: nil}, nil
 	}
 
 	state := i.state.stack.Top()
@@ -98,7 +104,7 @@ func (i *iterator) nextInReadyToMatchStage() (tok Token, err error) {
 	match, rule := state.match(i.state.text[i.state.index:])
 	if match == nil {
 		debugf("iterator.nextInReadyToMatchStage(%d): No rule in the rule sequence matched", i.depth)
-		return Token{Typ: Error, Value: nil}, nil
+		return Token{Type: Error, Value: nil}, nil
 	}
 
 	// TODO: carriage returns?
@@ -164,7 +170,7 @@ func (it *iterator) nextInWithinGroupsStage() (tok Token, err error) {
 
 	start, end := it.boundsOfGroup(capture.start, capture.length)
 	debugf("iterator.nextInWithinGroupsStage(%d): bygroups %d: returning token\n", it.depth, it.state.groupIndex)
-	tok = Token{Typ: byGroup.tok, Value: groupText, Start: start, End: end}
+	tok = Token{Type: byGroup.tok, Value: groupText, Start: start, End: end}
 
 	it.state.groupIndex++
 
@@ -211,7 +217,7 @@ func (it *iterator) nextInSublexer() (tok Token, err error) {
 		return
 	}
 
-	if tok.Typ == EOFType {
+	if tok.Type == EOFType {
 		debugf("iterator.nextInSublexer(%d): sublexer completed\n", it.depth)
 		// Sublexer completed. Are we still in gruops?
 		it.sublexers = it.sublexers[:len(it.sublexers)-1]
@@ -257,7 +263,7 @@ func (i *iterator) pushRootStateIfNeeded() {
 
 func (it *iterator) tokenOfEntireMatch(typ TokenType, match *regexp2.Match) Token {
 	s, e := it.boundsOfCapture(&match.Group.Capture)
-	return Token{Typ: typ, Value: it.groupText(match.GroupByNumber(0)), Start: s, End: e}
+	return Token{Type: typ, Value: it.groupText(match.GroupByNumber(0)), Start: s, End: e}
 }
 
 func (it *iterator) boundsOfCapture(match *regexp2.Capture) (start, end int) {

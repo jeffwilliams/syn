@@ -132,6 +132,7 @@ func (l *LexerRegistry) Match(filename string) *Lexer {
 // Register a Lexer with the LexerRegistry.
 func (l *LexerRegistry) Register(lexer *Lexer) *Lexer {
 	//lexer.SetRegistry(l)
+
 	config := lexer.cfg().Config
 	l.byName[config.Name] = lexer
 	l.byName[strings.ToLower(config.Name)] = lexer
