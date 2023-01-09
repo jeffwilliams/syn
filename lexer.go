@@ -131,7 +131,8 @@ func (lb *lexerBuilder) ruleSequence(crs []config.Rule) ([]Rule, error) {
 			return nil, fmt.Errorf("rule index %d: %w", i, err)
 		}
 
-		re, err := regexp2.Compile(cr.Pattern, regexp2.None)
+		pat := `\A` + cr.Pattern
+		re, err := regexp2.Compile(pat, regexp2.None)
 		if err != nil {
 			return nil, err
 		}
