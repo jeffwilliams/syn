@@ -224,7 +224,7 @@ func (it *iterator) nextInSublexer() (tok Token, err error) {
 		it.state.stage = stageWithinGroups
 		it.state.groupIndex++
 		debugf("iterator.nextInSublexer(%d): Setting groupindex to %d (%d/%d)\n", it.depth, it.state.groupIndex, it.state.groupIndex+1, len(it.state.byGroups))
-		if it.state.groupIndex > len(it.state.byGroups) {
+		if it.state.groupIndex >= len(it.state.byGroups) {
 			debugf("iterator.nextInSublexer(%d): Reached end of groups, will switch to full match stage\n", it.depth)
 			it.completeGroupIteration()
 		}
