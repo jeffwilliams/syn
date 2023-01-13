@@ -1,16 +1,16 @@
 package syn
 
-import (
-	"fmt"
-	"github.com/dlclark/regexp2"
-)
+import "github.com/dlclark/regexp2"
 
-type State struct {
+// state represents a state of the lexer. A state consists of a group of rules that are attempted
+// to be matched in order. A rule may push a new state onto a logical stack to change the set of rules
+// to be used for matching. A rule may also pop Stats off the stack to return to a previous state.
+type state struct {
 	name  string
-	rules []Rule
+	rules []rule
 }
 
-func (r State) match(text []rune) (*regexp2.Match, *Rule) {
+func (r state) match(text []rune) (*regexp2.Match, *rule) {
 	for i, rule := range r.rules {
 		debugf("State.match: for state %s trying rule %d /%s/\n", r.name, i, rule.pattern)
 		res, err := rule.match(text)
@@ -22,58 +22,31 @@ func (r State) match(text []rune) (*regexp2.Match, *Rule) {
 	return nil, nil
 }
 
-type Rules struct {
+// rules is the set of rules in a Lexer
+type rules struct {
 	// Map of state names to rules in that state
-	rules map[string]State
+	rules map[string]state
 }
 
-func NewRules() Rules {
-	return Rules{rules: make(map[string]State)}
+// newRules creates an empty Rules
+func newRules() rules {
+	return rules{rules: make(map[string]state)}
 }
 
-func (r *Rules) AddState(state State) {
-	r.rules[state.name] = state
+// NewRules adds a State to the rules
+func (r *rules) AddState(s state) {
+	r.rules[s.name] = s
 }
 
-func (r *Rules) Get(stateName string) (state State, ok bool) {
-	state, ok = r.rules[stateName]
+// Get retrieves the State with the specified name. If not found, ok is false.
+func (r *rules) Get(stateName string) (stat state, ok bool) {
+	stat, ok = r.rules[stateName]
 	return
 }
 
-func (r Rules) Validate() error {
-	var missing []string
-
-	// Make sure any state that is referred to from a rule actually exists.
-	for _, state := range r.rules {
-		for _, rule := range state.rules {
-			if _, ok := r.rules[rule.pushState]; !ok {
-				missing = append(missing, rule.pushState)
-			}
-		}
-	}
-
-	err := r.makeMissingError(missing)
-	if err != nil {
-		return err
-	}
-
-	// Make sure the root state exists
-	if _, ok := r.rules["root"]; !ok {
-		return fmt.Errorf("The root state is not defined")
-	}
-
-	return nil
-}
-
-func (r Rules) makeMissingError(missing []string) error {
-	if missing == nil || len(missing) == 0 {
-		return nil
-	}
-	return fmt.Errorf("The following states are referred to from rules, but aren't defined: %v\n",
-		missing)
-}
-
-type Rule struct {
+// A Rule specifies a regexp to match when lexing at the current position in the text, and an action
+// to take if the regexp matches.
+type rule struct {
 	pattern   *regexp2.Regexp
 	tok       TokenType
 	pushState string
@@ -87,7 +60,7 @@ type Rule struct {
 // leftmost match of the regular expression in b and the matches, if any, of
 // its subexpressions like regexp.FindSubmatchIndex.
 // Returns nil if there is no match.
-func (r Rule) match(text []rune) (*regexp2.Match, error) {
+func (r rule) match(text []rune) (*regexp2.Match, error) {
 	m, err := r.pattern.FindRunesMatch(text)
 	if m != nil && m.Index != 0 {
 		return nil, nil
@@ -100,6 +73,8 @@ type byGroupElement struct {
 	useSelfState string
 }
 
+// IsUseSelf returns true if the Rule specifies that the group should be handled by lexing
+// the group text with a new instance of the lexer.
 func (b byGroupElement) IsUseSelf() bool {
 	return b.useSelfState != ""
 }

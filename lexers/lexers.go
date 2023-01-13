@@ -1,3 +1,4 @@
+// Lexers contains lexers for the syn package and methods for creating syn Lexers
 package lexers
 
 import (
@@ -10,8 +11,6 @@ import (
 
 //go:embed embedded
 var embedded embed.FS
-
-// TODO: Need to do the new Design idea from README before implementing this.
 
 // GlobalLexerRegistry is the global LexerRegistry of Lexers.
 var GlobalLexerRegistry = func() *syn.LexerRegistry {
@@ -39,58 +38,17 @@ func Names(withAliases bool) []string {
 	return GlobalLexerRegistry.Names(withAliases)
 }
 
-// Get a Lexer by name, alias or file extension.
+// Get a Lexer by name, alias or file extension. Returns nil when no matching lexer is found.
 func Get(name string) *syn.Lexer {
 	return GlobalLexerRegistry.Get(name)
 }
 
-// MatchMimeType attempts to find a lexer for the given MIME type.
+// MatchMimeType attempts to find a lexer for the given MIME type. Returns nil when no matching lexer is found.
 func MatchMimeType(mimeType string) *syn.Lexer {
 	return GlobalLexerRegistry.MatchMimeType(mimeType)
 }
 
-// Match returns the first lexer matching filename.
+// Match returns the first lexer matching filename. Returns nil when no matching lexer is found.
 func Match(filename string) *syn.Lexer {
 	return GlobalLexerRegistry.Match(filename)
 }
-
-// Register a Lexer with the global registry.
-/*
-func Register(lexer syn.Lexer) *syn.Lexer {
-	return GlobalLexerRegistry.Register(lexer)
-}
-*/
-
-/*
-// Analyse text content and return the "best" lexer..
-func Analyse(text string) syn.Lexer {
-	return GlobalLexerRegistry.Analyse(text)
-}
-*/
-
-// PlaintextRules is used for the fallback lexer as well as the explicit
-// plaintext lexer.
-/*
-func PlaintextRules() syn.Rules {
-	rules := syn.NewRules()
-	rules.AddState()
-
-	return syn.Rules{rules: map[string]syn.State{
-		"root": syn.State{
-			name: "root",
-			rules: []Rule{
-				{`.+`, chroma.Text, nil},
-				{`\n`, chroma.Text, nil},
-			},
-		},
-	},
-	}
-}
-
-// Fallback lexer if no other is found.
-var Fallback syn.Lexer = chroma.MustNewLexer(&chroma.Config{
-	Name:      "fallback",
-	Filenames: []string{"*"},
-	Priority:  -1,
-}, PlaintextRules)
-*/

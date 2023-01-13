@@ -23,7 +23,7 @@ int main() {
 	assert := assert.New(t)
 
 	input := []rune(prog)
-	lex, err := NewLexerFromXMLFile("test_data/c.xml")
+	lex, err := NewLexerFromXMLFile("lexers/embedded/c.xml")
 	assert.Nil(err)
 	assert.NotNil(lex)
 	if err != nil {
@@ -327,7 +327,7 @@ int main() {
 	assert := assert.New(t)
 
 	makeLexer := func() *Lexer {
-		lex, err := NewLexerFromXMLFile("test_data/c.xml")
+		lex, err := NewLexerFromXMLFile("lexers/embedded/c.xml")
 		assert.Nil(err)
 		assert.NotNil(lex)
 		if err != nil {
@@ -409,7 +409,7 @@ func TestLexerCRLF(t *testing.T) {
 	assert := assert.New(t)
 
 	input := []rune(prog)
-	lex, err := NewLexerFromXMLFile("test_data/c.xml")
+	lex, err := NewLexerFromXMLFile("lexers/embedded/c.xml")
 	assert.Nil(err)
 	assert.NotNil(lex)
 	if err != nil {
@@ -464,6 +464,48 @@ func TestLexerCRLF(t *testing.T) {
 		{Type: Text, Value: []rune("\r\n"), Start: 52, End: 54},
 		{Type: Punctuation, Value: []rune("}"), Start: 54, End: 55},
 		{Type: Text, Value: []rune("\r\n"), Start: 55, End: 57},
+	}
+
+	assert.Equal(expected, tokens)
+
+	for i, tok := range expected {
+		if i >= len(tokens) {
+			break
+		}
+		if !tokensEqual(&tok, &tokens[i]) {
+			t.Fatalf("Token %d doesn't match. Expected (%s) but got (%s)", i, tok, tokens[i])
+		}
+	}
+
+}
+
+func TestMarkdown(t *testing.T) {
+	doc := `# heading
+text
+`
+
+	assert := assert.New(t)
+
+	input := []rune(doc)
+	lex, err := NewLexerFromXMLFile("lexers/embedded/markdown.xml")
+	assert.Nil(err)
+	assert.NotNil(lex)
+	if err != nil {
+		t.FailNow()
+	}
+
+	//DebugLogger = log.New(os.Stdout, "", 0)
+
+	tokens, err := tokenize(Coalesce(lex.Tokenise(input)))
+	if err != nil {
+		t.Fatalf("Tokenizing returned error: %v\n", err)
+	}
+
+	dumpTokens(t, tokens)
+
+	expected := []Token{
+		{Type: GenericHeading, Value: []rune("# heading\n"), Start: 0, End: 10},
+		{Type: Other, Value: []rune("text\n"), Start: 10, End: 15},
 	}
 
 	assert.Equal(expected, tokens)

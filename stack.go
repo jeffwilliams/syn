@@ -1,41 +1,41 @@
 package syn
 
-type Stack struct {
-	data []State
+type stack struct {
+	data []state
 }
 
-func NewStack() *Stack {
-	return &Stack{
-		data: make([]State, 0),
+func newStack() *stack {
+	return &stack{
+		data: make([]state, 0),
 	}
 }
 
-func (s *Stack) Push(list State) {
+func (s *stack) Push(list state) {
 	s.data = append(s.data, list)
 }
 
-func (s *Stack) Pop(count int) {
+func (s *stack) Pop(count int) {
 	if len(s.data) > 0 {
 		s.data = s.data[:len(s.data)-count]
 	}
 	return
 }
 
-func (s Stack) Top() (list State) {
+func (s stack) Top() (list state) {
 	if len(s.data) > 0 {
 		list = s.data[len(s.data)-1]
 	}
 	return
 }
 
-func (s Stack) Len() int {
+func (s stack) Len() int {
 	return len(s.data)
 }
 
-func (s Stack) Clone() *Stack {
-	data := make([]State, len(s.data))
+func (s stack) Clone() *stack {
+	data := make([]state, len(s.data))
 	copy(data, s.data)
-	return &Stack{
+	return &stack{
 		data: data,
 	}
 }

@@ -47,7 +47,7 @@ func (c *coalescer) merge(tok *Token) {
 }
 
 func (c *coalescer) State() interface{} {
-	return CoalescerState{
+	return coalescerState{
 		accum:     c.accum,
 		accumSet:  c.accumSet,
 		iterState: c.it.State(),
@@ -55,14 +55,14 @@ func (c *coalescer) State() interface{} {
 }
 
 func (c *coalescer) SetState(s interface{}) {
-	state := s.(CoalescerState)
+	state := s.(coalescerState)
 
 	c.accum = state.accum
 	c.accumSet = state.accumSet
 	c.it.SetState(state.iterState)
 }
 
-type CoalescerState struct {
+type coalescerState struct {
 	accum     Token
 	accumSet  bool
 	iterState interface{}

@@ -8,7 +8,7 @@ import (
 func TestStack(t *testing.T) {
 	assert := assert.New(t)
 
-	var empty State
+	var empty state
 
 	s := NewStack()
 	assert.Equal(0, s.Len())
@@ -16,14 +16,14 @@ func TestStack(t *testing.T) {
 	assert.Equal(empty, s.Top())
 	assert.Equal(0, s.Len())
 
-	r := State{}
+	r := state{}
 	s.Push(r)
 	assert.Equal(1, s.Len())
 	assert.Equal(r, s.Top())
 	s.Pop(1)
 	assert.Equal(0, s.Len())
 
-	r2 := State{}
+	r2 := state{}
 	s.Push(r)
 	s.Push(r2)
 	assert.Equal(2, s.Len())

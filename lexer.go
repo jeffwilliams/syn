@@ -1,3 +1,16 @@
+// Package syn implements a syntax highlighter meant to be used in text editors.
+//
+// The syn package exports a Lexer type which can be used to lex text for a specific language
+// and return an Iterator that can iterate over the Tokens of the text. The state of the iteration
+// can be saved and later used to restart iteration from the saved point. This is useful in text editors
+// to re-highlight a subset of the text that has been modified rather than the entire text by iterating
+// starting with the saved state rather than from the beginning of the text.
+//
+// Lexers are normally created using the lexers subpackage. For example:
+//
+//   import "github.com/jeffwilliams/syn/lexers"
+//
+//   lexer = lexers.Get("Go")
 package syn
 
 import (
@@ -13,15 +26,16 @@ import (
 
 type Lexer struct {
 	config *config.Lexer
-	rules  Rules
+	rules  rules
 }
 
-func NewLexer(rules Rules) *Lexer {
+func newLexer(r rules) *Lexer {
 	return &Lexer{
-		rules: rules,
+		rules: r,
 	}
 }
 
+// NewLexerFromXML creates a new lexer given an XML file containing a definition of a lexer.
 func NewLexerFromXMLFile(xmlLexerConfigFile string) (*Lexer, error) {
 	f, err := os.Open(xmlLexerConfigFile)
 	if err != nil {
@@ -31,6 +45,8 @@ func NewLexerFromXMLFile(xmlLexerConfigFile string) (*Lexer, error) {
 	return NewLexerFromXML(f)
 }
 
+// NewLexerFromXML creates a new lexer given an XML file containing a definition of a lexer. The file is opened
+// using the specified FS.
 func NewLexerFromXMLFS(fsys fs.FS, xmlLexerConfigFile string) (*Lexer, error) {
 	f, err := fsys.Open(xmlLexerConfigFile)
 	if err != nil {
@@ -40,6 +56,7 @@ func NewLexerFromXMLFS(fsys fs.FS, xmlLexerConfigFile string) (*Lexer, error) {
 	return NewLexerFromXML(f)
 }
 
+// NewLexerFromXML creates a new lexer given an XML definition of a lexer.
 func NewLexerFromXML(rdr io.Reader) (*Lexer, error) {
 	lexModel, err := config.DecodeLexer(rdr)
 	if err != nil {
@@ -76,7 +93,7 @@ func newLexerBuilder(cfg *config.Lexer) lexerBuilder {
 	return lexerBuilder{
 		cfg: cfg,
 		lexer: &Lexer{
-			rules:  NewRules(),
+			rules:  newRules(),
 			config: cfg,
 		},
 	}
@@ -100,12 +117,45 @@ func (lb *lexerBuilder) Build() (*Lexer, error) {
 }
 
 func (lb *lexerBuilder) validate() error {
+	foundRoot := false
 	for _, s := range lb.cfg.Rules.States {
 		if s.Name == "root" {
-			return nil
+			foundRoot = true
 		}
 	}
-	return fmt.Errorf("No 'root' state is defined")
+
+	if !foundRoot {
+		return fmt.Errorf("No 'root' state is defined")
+	}
+
+	var missing []string
+
+	stateNames := map[string]struct{}{}
+	for _, state := range lb.cfg.Rules.States {
+		stateNames[state.Name] = struct{}{}
+	}
+
+	for _, state := range lb.cfg.Rules.States {
+		for _, rule := range state.Rules {
+			if rule.Push == nil || rule.Push.State == "" {
+				continue
+			}
+
+			if _, ok := stateNames[rule.Push.State]; !ok {
+				missing = append(missing, rule.Push.State)
+			}
+		}
+	}
+
+	return lb.makeMissingError(missing)
+}
+
+func (r lexerBuilder) makeMissingError(missing []string) error {
+	if missing == nil || len(missing) == 0 {
+		return nil
+	}
+	return fmt.Errorf("The following states are referred to from rules, but aren't defined: %v\n",
+		missing)
 }
 
 func (lb *lexerBuilder) build() error {
@@ -116,15 +166,15 @@ func (lb *lexerBuilder) build() error {
 			return fmt.Errorf("For state %s: %w", xmlState.Name, err)
 		}
 
-		s := State{xmlState.Name, seq}
+		s := state{xmlState.Name, seq}
 		lb.lexer.rules.AddState(s)
 	}
 
 	return nil
 }
 
-func (lb *lexerBuilder) ruleSequence(crs []config.Rule) ([]Rule, error) {
-	rules := make([]Rule, len(crs))
+func (lb *lexerBuilder) ruleSequence(crs []config.Rule) ([]rule, error) {
+	rules := make([]rule, len(crs))
 	for i, cr := range crs {
 		err := lb.checkRule(&cr)
 		if err != nil {
@@ -138,7 +188,7 @@ func (lb *lexerBuilder) ruleSequence(crs []config.Rule) ([]Rule, error) {
 		}
 		re.MatchTimeout = time.Millisecond * 250
 
-		r := Rule{
+		r := rule{
 			pattern: re,
 		}
 
@@ -218,13 +268,13 @@ func (lb *lexerBuilder) checkRule(r *config.Rule) error {
 
 func (lb *lexerBuilder) resolveIncludes() error {
 
-	for name, state := range lb.lexer.rules.rules {
+	for name, st := range lb.lexer.rules.rules {
 
 		// TODO: to reduce garbage, we could just build this when the first include is reached
 		// If there are none there is no need to make a new slice.
-		newSeq := make([]Rule, 0, len(state.rules))
+		newSeq := make([]rule, 0, len(st.rules))
 
-		for _, rule := range state.rules {
+		for _, rule := range st.rules {
 			if rule.include != "" {
 				includeState, ok := lb.lexer.rules.Get(rule.include)
 				if !ok {
@@ -240,7 +290,7 @@ func (lb *lexerBuilder) resolveIncludes() error {
 			newSeq = append(newSeq, rule)
 		}
 
-		lb.lexer.rules.rules[name] = State{name, newSeq}
+		lb.lexer.rules.rules[name] = state{name, newSeq}
 	}
 
 	return nil

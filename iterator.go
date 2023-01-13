@@ -17,16 +17,16 @@ type iterator struct {
 	// Element 0 is the state of this lexer, and 1 and above are the state of
 	// sublexers, if any, that are processing a subset of the text. LexerState[1]
 	// is the state for the lexer at depth 1, [2] for depth 2, and so on.
-	state     LexerState
+	state     lexerState
 	sublexers []*iterator
-	rules     Rules
+	rules     rules
 	depth     int
 }
 
-func newIterator(text []rune, rules Rules) *iterator {
+func newIterator(text []rune, rulez rules) *iterator {
 	iter := &iterator{
-		state: LexerState{stack: NewStack(), text: text},
-		rules: rules,
+		state: lexerState{stack: newStack(), text: text},
+		rules: rulez,
 	}
 
 	return iter
@@ -137,7 +137,7 @@ func (i *iterator) nextInReadyToMatchStage() (tok Token, err error) {
 	return
 }
 
-func (i *iterator) prepareToIterateGroups(matchingRule *Rule, match *regexp2.Match) {
+func (i *iterator) prepareToIterateGroups(matchingRule *rule, match *regexp2.Match) {
 	i.state.rule = matchingRule
 	i.setCapturesFromMatch(match)
 	i.state.groupIndex = 0
@@ -276,7 +276,7 @@ func (it *iterator) boundsOfGroup(index, length int) (start, end int) {
 		it.state.index + it.state.offset + index + length
 }
 
-func (it *iterator) handleRuleState(rule *Rule) {
+func (it *iterator) handleRuleState(rule *rule) {
 	if rule.popDepth == 0 && rule.pushState == "" {
 		return
 	}
@@ -307,7 +307,7 @@ func (it *iterator) groupText(g *regexp2.Group) []rune {
 //
 // The state is invalidated if the text that the Iterator is iterating is changed.
 func (it *iterator) State() interface{} {
-	states := make([]LexerState, len(it.sublexers)+1)
+	states := make([]lexerState, len(it.sublexers)+1)
 	states[0] = it.state
 	states[0].stack = it.state.stack.Clone()
 	for i, sl := range it.sublexers {
@@ -320,7 +320,7 @@ func (it *iterator) State() interface{} {
 
 func (it *iterator) SetState(s interface{}) {
 
-	state := s.([]LexerState)
+	state := s.([]lexerState)
 
 	// The lexers and sublexers all use the same rules because the only way to make
 	// a sublexer is through usingself (for now).
@@ -351,12 +351,12 @@ const (
 	stageRunningSublexer
 )
 
-// LexerState represents the state of the Lexer at some intermediate position in the lexing.
+// lexerState represents the state of the Lexer at some intermediate position in the lexing.
 // It determines what token should be matched next based on what has aleady been processed up to
 // a certain byte-position in the input text. It can be used to restart lexing from that same point
 // in the text.
-type LexerState struct {
-	stack  *Stack
+type lexerState struct {
+	stack  *stack
 	index  int
 	text   []rune
 	stage  stage
@@ -365,7 +365,7 @@ type LexerState struct {
 	groups     []capture        // Groups from the last match. Used when we need to iterate over bygroups. Each entry is a start/end of group.
 	groupIndex int              // index for current group we are iterating over
 	byGroups   []byGroupElement // The "by groups" items defined in the rule that specify how to handle each group from the match
-	rule       *Rule            // Rule we are matching the groups for
+	rule       *rule            // Rule we are matching the groups for
 	offsetIter offsetIterator
 }
 
@@ -377,14 +377,14 @@ func (c capture) end() int {
 	return c.start + c.length
 }
 
-type Action struct {
-	typ       ActionType
+type action struct {
+	typ       actionType
 	tokenType TokenType
 }
 
-type ActionType int
+type actionType int
 
 const (
-	Pop ActionType = iota
-	EmitToken
+	pop actionType = iota
+	emitToken
 )
