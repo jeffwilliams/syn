@@ -39,3 +39,7 @@ func (s stack) Clone() *stack {
 		data: data,
 	}
 }
+
+func (s *stack) Clear() {
+	s.data = s.data[:0]
+}

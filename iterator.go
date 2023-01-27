@@ -1,6 +1,7 @@
 package syn
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/dlclark/regexp2"
@@ -8,8 +9,18 @@ import (
 
 type Iterator interface {
 	Next() (Token, error)
-	State() interface{}
-	SetState(state interface{})
+	State() IteratorState
+	SetState(state IteratorState)
+}
+
+type IteratorState interface {
+	Equal(s IteratorState) bool
+	// SetIndex sets the index of the next input rune in the text. This can be used
+	// to adjust the position stored in the state if an earlier subset of the input
+	// text has been inserted or deleted, but the state of the iterator may still
+	// apply.
+	SetIndex(i int)
+	AddToIndex(delta int)
 }
 
 type iterator struct {
@@ -17,6 +28,7 @@ type iterator struct {
 	// Element 0 is the state of this lexer, and 1 and above are the state of
 	// sublexers, if any, that are processing a subset of the text. LexerState[1]
 	// is the state for the lexer at depth 1, [2] for depth 2, and so on.
+	text      []rune
 	state     lexerState
 	sublexers []*iterator
 	rules     rules
@@ -25,7 +37,8 @@ type iterator struct {
 
 func newIterator(text []rune, rulez rules) *iterator {
 	iter := &iterator{
-		state: lexerState{stack: newStack(), text: text},
+		text:  text,
+		state: lexerState{stack: newStack()},
 		rules: rulez,
 	}
 
@@ -93,21 +106,33 @@ func (i *iterator) Next() (Token, error) {
 }
 
 func (i *iterator) nextInReadyToMatchStage() (tok Token, err error) {
-	if i.state.index >= len(i.state.text) {
+	if i.state.index >= len(i.text) {
 		debugf("iterator.nextInReadyToMatchStage(%d): Current index %d is past the end of the text. Text has length %d. Returning EOFType",
-			i.depth, i.state.index, len(i.state.text))
+			i.depth, i.state.index, len(i.text))
 		return Token{Type: EOFType, Value: nil}, nil
 	}
 
 	state := i.state.stack.Top()
 	debugf("iterator.nextInReadyToMatchStage(%d): Matching a full rule in top state %s", i.depth, state.name)
-	match, rule := state.match(i.state.text[i.state.index:])
+	match, rule := state.match(i.text[i.state.index:])
 	if match == nil {
 		debugf("iterator.nextInReadyToMatchStage(%d): No rule in the rule sequence matched", i.depth)
+		i.state.index++
+		if i.state.index < len(i.text) && i.text[i.state.index] == '\n' {
+			// This idea is taken from Chroma, which also took it from Pygments. To quote:
+			//
+			// "If the RegexLexer encounters a newline that is flagged as an error token, the stack is
+			// emptied and the lexer continues scanning in the 'root' state. This can help producing
+			// error-tolerant highlighting for erroneous input, e.g. when a single-line string is not
+			// closed."
+			//
+			// Basically we keep making progress character by character and try to reset.
+			// TODO: This could be slow for large files; perhaps this should be an option.
+			i.state.stack.Clear()
+			i.pushRootStateIfNeeded()
+		}
 		return Token{Type: Error, Value: nil}, nil
 	}
-
-	// TODO: carriage returns?
 
 	if rule.byGroups != nil {
 		i.prepareToIterateGroups(rule, match)
@@ -123,7 +148,7 @@ func (i *iterator) nextInReadyToMatchStage() (tok Token, err error) {
 		tok = i.tokenOfEntireMatch(rule.tok, match)
 		g := match.GroupByNumber(0)
 		debugf("iterator.nextInReadyToMatchStage(%d): Moving index from %d to %d (some text there is: '%s')", i.depth, i.state.index, i.state.index+g.Length,
-			aLittleText(i.state.text, i.state.index+g.Length))
+			aLittleText(i.text, i.state.index+g.Length))
 		i.state.index += g.Length
 	}
 	i.handleRuleState(rule)
@@ -160,7 +185,7 @@ func (it *iterator) nextInWithinGroupsStage() (tok Token, err error) {
 	byGroup := it.state.byGroups[it.state.groupIndex]
 	capture := it.state.groups[it.state.groupIndex+1]
 
-	text := it.state.text[it.state.index:]
+	text := it.text[it.state.index:]
 	groupText := text[capture.start:capture.end()]
 	if byGroup.IsUseSelf() {
 		debugf("Lexer.nextInWithinGroupsStage(%d): bygroups %d is a use-self. Creating sub lexer\n", it.depth, it.state.groupIndex)
@@ -297,7 +322,7 @@ func (it *iterator) handleRuleState(rule *rule) {
 }
 
 func (it *iterator) groupText(g *regexp2.Group) []rune {
-	text := it.state.text[it.state.index:]
+	text := it.text[it.state.index:]
 	return text[g.Index : g.Index+g.Length]
 }
 
@@ -306,8 +331,8 @@ func (it *iterator) groupText(g *regexp2.Group) []rune {
 // by calling SetState() with the result of State().
 //
 // The state is invalidated if the text that the Iterator is iterating is changed.
-func (it *iterator) State() interface{} {
-	states := make([]lexerState, len(it.sublexers)+1)
+func (it *iterator) State() IteratorState {
+	states := make(lexerStates, len(it.sublexers)+1)
 	states[0] = it.state
 	states[0].stack = it.state.stack.Clone()
 	for i, sl := range it.sublexers {
@@ -318,9 +343,9 @@ func (it *iterator) State() interface{} {
 	return states
 }
 
-func (it *iterator) SetState(s interface{}) {
+func (it *iterator) SetState(s IteratorState) {
 
-	state := s.([]lexerState)
+	state := s.(lexerStates)
 
 	// The lexers and sublexers all use the same rules because the only way to make
 	// a sublexer is through usingself (for now).
@@ -329,9 +354,8 @@ func (it *iterator) SetState(s interface{}) {
 
 	it.sublexers = make([]*iterator, len(state)-1)
 	for i, state := range state[1:] {
-		text := state.text
-
-		it.sublexers[i] = newIterator(text, it.rules)
+		// TODO: we can't set the text that we're parsing as part of the state
+		it.sublexers[i] = newIterator(it.text, it.rules)
 		it.depth = i + 1
 		it.sublexers[i].state = state
 	}
@@ -356,9 +380,9 @@ const (
 // a certain byte-position in the input text. It can be used to restart lexing from that same point
 // in the text.
 type lexerState struct {
-	stack  *stack
+	stack *stack
+	// index is the index of the next input rune to process
 	index  int
-	text   []rune
 	stage  stage
 	offset int
 
@@ -369,12 +393,111 @@ type lexerState struct {
 	offsetIter offsetIterator
 }
 
+func (ls lexerState) equal(o *lexerState) bool {
+	// We don't compare all fields here, only enough to tell if the
+	// lexer would be in the same state in both cases.
+	return ls.stacksEqual(o) &&
+		ls.index == o.index &&
+		ls.stage == o.stage &&
+		ls.offset == o.offset &&
+		ls.groupsEqual(o) &&
+		ls.groupIndex == o.groupIndex &&
+		// NOTE: this next line compares the pointers to the rule; fine as long as the rule is created from the same lexer
+		ls.rule == o.rule
+}
+
+func (ls lexerState) stacksEqual(o *lexerState) bool {
+	if ls.stack.Len() != o.stack.Len() {
+		return false
+	}
+
+	for i, e := range ls.stack.data {
+		if e.name != o.stack.data[i].name {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (ls lexerState) groupsEqual(o *lexerState) bool {
+	if len(ls.groups) != len(o.groups) {
+		return false
+	}
+
+	for i, e := range ls.groups {
+		if !e.equal(&o.groups[i]) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (ls lexerState) String() string {
+	var buf bytes.Buffer
+
+	fmt.Fprintf(&buf, "lexerState: \n")
+	fmt.Fprintf(&buf, "  index: %d\n", ls.index)
+	fmt.Fprintf(&buf, "  stage: %d\n", ls.stage)
+	fmt.Fprintf(&buf, "  offset: %d\n", ls.offset)
+	fmt.Fprintf(&buf, "  groups: %#v\n", ls.groups)
+	fmt.Fprintf(&buf, "  groupIndex: %d\n", ls.groupIndex)
+	fmt.Fprintf(&buf, "  rule: %v\n", ls.rule)
+
+	return buf.String()
+}
+
+type lexerStates []lexerState
+
+func (ls lexerStates) Equal(o IteratorState) bool {
+	other, ok := o.(lexerStates)
+	if !ok {
+		return false
+	}
+
+	for i, e := range ls {
+		if !e.equal(&other[i]) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (ls lexerStates) SetIndex(ndx int) {
+	for i := range ls {
+		ls[i].index = ndx
+	}
+}
+
+func (ls lexerStates) AddToIndex(ndx int) {
+	for i := range ls {
+		ls[i].index += ndx
+	}
+}
+
+func (ls lexerStates) String() string {
+	var buf bytes.Buffer
+
+	fmt.Fprintf(&buf, "lexerStates: \n")
+	for i, s := range ls {
+		fmt.Fprintf(&buf, "  [%d]: %s\n", i, s)
+	}
+
+	return buf.String()
+}
+
 type capture struct {
 	start, length int
 }
 
 func (c capture) end() int {
 	return c.start + c.length
+}
+
+func (c capture) equal(o *capture) bool {
+	return c.start == o.start && c.length == o.length
 }
 
 type action struct {

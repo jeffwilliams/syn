@@ -32,9 +32,9 @@ int main() {
 
 	//DebugLogger = log.New(os.Stdout, "", 0)
 
-	tokens, err := tokenize(Coalesce(lex.Tokenise(input)))
+	tokens, err := tokenize(lex.Tokenise(input))
 	if err != nil {
-		t.Fatalf("Tokenizing returned error: %v\n", err)
+		t.Fatalf("Tokenizing returned error: %v. Input text length was %d\n", err, len(input))
 	}
 
 	dumpTokens(t, tokens)
@@ -113,117 +113,7 @@ int main() {
 
 }
 
-/*
-func TestLexerNoCoalesing(t *testing.T) {
-	prog := `
-#include <stdio.h>
-
-int return_5() {
-	return 5;
-}
-
-int main() {
-	printf("value: %d\n", return_5());
-}
-
-`
-
-	assert := assert.New(t)
-
-	input := []rune(prog)
-	lex, err := NewLexerFromXML(input, "test_data/c.xml")
-	assert.Nil(err)
-	assert.NotNil(lex)
-	if err != nil {
-		t.FailNow()
-	}
-
-	//DebugLogger = log.New(os.Stdout, "", 0)
-
-	tokens, err := tokenize(lex)
-	if err != nil {
-		t.Fatalf("Tokenizing returned error: %v\n", err)
-	}
-
-	dumpTokens(t, tokens)
-
-	// Make sure tokens are consecutive (in terms of rune index) and
-	// the value matches the referenced indices
-	for i, tok := range tokens {
-		if tok.Typ == EOFType {
-			continue
-		}
-
-		assert.Equal(tok.Value, input[tok.Start:tok.End],
-			"token='%s' ref='%s' rawToken=(%+v)", string(tok.Value), string(input[tok.Start:tok.End]), tok)
-
-		if i == 0 {
-			continue
-		}
-
-		ptok := tokens[i-1]
-		assert.Equal(tok.Start, ptok.End)
-	}
-
-	expected := []Token{
-		{Typ: Text, Value: []rune("\n"), Start: 0, End: 1},
-		{Typ: CommentPreproc, Value: []rune("#include"), Start: 1, End: 9},
-		{Typ: Text, Value: []rune(" "), Start: 9, End: 10},
-		{Typ: CommentPreprocFile, Value: []rune("<stdio.h>"), Start: 10, End: 19},
-		{Typ: CommentPreproc, Value: []rune("\n"), Start: 19, End: 20},
-		{Typ: Text, Value: []rune("\n"), Start: 20, End: 21},
-		{Typ: KeywordType, Value: []rune("int"), Start: 21, End: 24},
-		{Typ: Text, Value: []rune(" "), Start: 24, End: 25},
-		{Typ: NameFunction, Value: []rune("return_5"), Start: 25, End: 33},
-		{Typ: Punctuation, Value: []rune("()"), Start: 33, End: 35},
-		{Typ: Text, Value: []rune(" "), Start: 35, End: 36},
-		{Typ: Punctuation, Value: []rune("{"), Start: 36, End: 37},
-		{Typ: Text, Value: []rune("\n\t"), Start: 37, End: 39},
-		{Typ: Keyword, Value: []rune("return"), Start: 39, End: 45},
-		{Typ: Text, Value: []rune(" "), Start: 45, End: 46},
-		{Typ: LiteralNumberInteger, Value: []rune("5"), Start: 46, End: 47},
-		{Typ: Punctuation, Value: []rune(";"), Start: 47, End: 48},
-		{Typ: Text, Value: []rune("\n"), Start: 48, End: 49},
-		{Typ: Punctuation, Value: []rune("}"), Start: 49, End: 50},
-		{Typ: Text, Value: []rune("\n\n"), Start: 50, End: 52},
-		{Typ: KeywordType, Value: []rune("int"), Start: 52, End: 55},
-		{Typ: Text, Value: []rune(" "), Start: 55, End: 56},
-		{Typ: NameFunction, Value: []rune("main"), Start: 56, End: 60},
-		{Typ: Punctuation, Value: []rune("()"), Start: 60, End: 62},
-		{Typ: Text, Value: []rune(" "), Start: 62, End: 63},
-		{Typ: Punctuation, Value: []rune("{"), Start: 63, End: 64},
-		{Typ: Text, Value: []rune("\n\t"), Start: 64, End: 66},
-		{Typ: NameFunction, Value: []rune("printf"), Start: 66, End: 72},
-		{Typ: Punctuation, Value: []rune("("), Start: 72, End: 73},
-		{Typ: LiteralStringAffix, Value: []rune(""), Start: 73, End: 73},
-		{Typ: LiteralString, Value: []rune(`"value: %d`), Start: 73, End: 83},
-		{Typ: LiteralStringEscape, Value: []rune(`\n`), Start: 83, End: 85},
-		{Typ: LiteralString, Value: []rune(`"`), Start: 85, End: 86},
-		{Typ: Punctuation, Value: []rune(","), Start: 86, End: 87},
-		{Typ: Text, Value: []rune(" "), Start: 87, End: 88},
-		{Typ: NameFunction, Value: []rune("return_5"), Start: 88, End: 96},
-		{Typ: Punctuation, Value: []rune("());"), Start: 96, End: 100},
-		{Typ: Text, Value: []rune("\n"), Start: 100, End: 101},
-		{Typ: Punctuation, Value: []rune("}"), Start: 101, End: 102},
-		{Typ: Text, Value: []rune("\n\n"), Start: 102, End: 104},
-	}
-
-	assert.Equal(expected, tokens)
-
-	for i, tok := range expected {
-		if i >= len(tokens) {
-			break
-		}
-		if !tokensEqual(&tok, &tokens[i]) {
-			t.Fatalf("Token %d doesn't match. Expected (%s) but got (%s)", i, tok, tokens[i])
-		}
-	}
-
-}
-*/
-
 func tokenize(it Iterator) (tokens []Token, err error) {
-	//it := Coalesce(lex)
 	for {
 		var tok Token
 		tok, err = it.Next()
@@ -239,8 +129,25 @@ func tokenize(it Iterator) (tokens []Token, err error) {
 	return
 }
 
+func tokenizeAndLog(it Iterator, t *testing.T) (tokens []Token, err error) {
+	for {
+		var tok Token
+		tok, err = it.Next()
+		if err != nil {
+			return
+		}
+
+		t.Logf("test tokenize: tok = %s\n", tok)
+
+		if tok.Type == Error || tok.Type == EOFType {
+			break
+		}
+		tokens = append(tokens, tok)
+	}
+	return
+}
+
 func tokenizeAtMost(it Iterator, n int) (tokens []Token, err error) {
-	//it := Coalesce(lex)
 	for n > 0 {
 		var tok Token
 		tok, err = it.Next()
@@ -248,7 +155,7 @@ func tokenizeAtMost(it Iterator, n int) (tokens []Token, err error) {
 			return
 		}
 
-		if tok.Type == Error || tok.Type == EOFType {
+		if tok.Type == EOFType {
 			break
 		}
 		tokens = append(tokens, tok)
@@ -345,8 +252,7 @@ int main() {
 		t.Logf("Tokenizing %d tokens, saving/restoring state, then continuing\n", i)
 
 		lex := makeLexer()
-		lit := lex.Tokenise(input)
-		it := Coalesce(lit)
+		it := lex.Tokenise(input)
 
 		tokens, err := tokenizeAtMost(it, i)
 		if err != nil {
@@ -366,7 +272,7 @@ int main() {
 		it.SetState(state)
 
 		// Now tokenize from that place
-		moreTokens, err := tokenize(it)
+		moreTokens, err := tokenizeAndLog(it, t)
 		if err != nil {
 			t.Fatalf("Tokenizing returned error: %v\n", err)
 		}
@@ -418,7 +324,7 @@ func TestLexerCRLF(t *testing.T) {
 
 	//DebugLogger = log.New(os.Stdout, "", 0)
 
-	tokens, err := tokenize(Coalesce(lex.Tokenise(input)))
+	tokens, err := tokenize(lex.Tokenise(input))
 	if err != nil {
 		t.Fatalf("Tokenizing returned error: %v\n", err)
 	}
@@ -496,7 +402,7 @@ text
 
 	//DebugLogger = log.New(os.Stdout, "", 0)
 
-	tokens, err := tokenize(Coalesce(lex.Tokenise(input)))
+	tokens, err := tokenize(lex.Tokenise(input))
 	if err != nil {
 		t.Fatalf("Tokenizing returned error: %v\n", err)
 	}
@@ -518,5 +424,104 @@ text
 			t.Fatalf("Token %d doesn't match. Expected (%s) but got (%s)", i, tok, tokens[i])
 		}
 	}
+}
+
+func TestEqual(t *testing.T) {
+	prog := `int var1;
+int var2;
+int var3;
+	`
+
+	assert := assert.New(t)
+
+	input := []rune(prog)
+	lex, err := NewLexerFromXMLFile("lexers/embedded/c.xml")
+	assert.Nil(err)
+	assert.NotNil(lex)
+	if err != nil {
+		t.FailNow()
+	}
+
+	it1 := lex.Tokenise(input)
+	it2 := lex.Tokenise(input)
+
+	// tokenize it1 until just after line 1
+	expected := []Token{
+		{Type: KeywordType, Value: []rune("int"), Start: 0, End: 3},
+		{Type: Text, Value: []rune(" "), Start: 3, End: 4},
+		{Type: Name, Value: []rune("var1"), Start: 4, End: 8},
+		{Type: Punctuation, Value: []rune(";"), Start: 8, End: 9},
+		{Type: Text, Value: []rune("\n"), Start: 9, End: 10},
+	}
+
+	tokens, err := tokenizeAtMost(it1, 5)
+	assert.Nil(err)
+	// make sure we're in the right place
+	assert.Equal(expected, tokens)
+
+	// tokenize it2 until just after line 1
+	tokens, err = tokenizeAtMost(it2, 5)
+	assert.Nil(err)
+	// make sure we're in the right place
+	assert.Equal(expected, tokens)
+
+	// Make sure it1 state equals it2 state
+	assert.True(it1.State().Equal(it2.State()))
+
+	// Move it2 to the end of line 2
+	expected = []Token{
+		{Type: KeywordType, Value: []rune("int"), Start: 10, End: 13},
+		{Type: Text, Value: []rune(" "), Start: 13, End: 14},
+		{Type: Name, Value: []rune("var2"), Start: 14, End: 18},
+		{Type: Punctuation, Value: []rune(";"), Start: 18, End: 19},
+		{Type: Text, Value: []rune("\n"), Start: 19, End: 20},
+	}
+
+	tokens, err = tokenizeAtMost(it2, 5)
+	assert.Nil(err)
+	// make sure we're in the right place
+	assert.Equal(expected, tokens)
+
+	// it1 state should be different from it2 state
+	assert.False(it1.State().Equal(it2.State()))
+
+	// Make a new iterator starting from it1 state, move it to it2 position. The states
+	// should then be equal
+	itTmp := lex.TokeniseAt(input, it1.State())
+	tokens, err = tokenizeAtMost(itTmp, 5)
+	assert.Nil(err)
+	assert.Equal(expected, tokens)
+	assert.True(it2.State().Equal(itTmp.State()))
+
+	// Change the text in a compatible manner
+	prog2 := `int var1;
+char* var2;
+int var3;
+	`
+	input = []rune(prog2)
+
+	// adjust the state for iterator 1 and 2 since the text changed
+	st2 := it2.State()
+	st2.AddToIndex(2)
+
+	//fmt.Printf("it1 state: %s\n", it1.State())
+
+	// make a new iterator starting at end end of line 1 (it1) and when it gets to the same point as it2 they should be equal
+	itTmp = lex.TokeniseAt(input, it1.State())
+	tokens, err = tokenizeAtMost(itTmp, 6)
+	assert.Nil(err)
+	expected = []Token{
+		{Type: KeywordType, Value: []rune("char"), Start: 10, End: 14},
+		{Type: Operator, Value: []rune("*"), Start: 14, End: 15},
+		{Type: Text, Value: []rune(" "), Start: 15, End: 16},
+		{Type: Name, Value: []rune("var2"), Start: 16, End: 20},
+		{Type: Punctuation, Value: []rune(";"), Start: 20, End: 21},
+		{Type: Text, Value: []rune("\n"), Start: 21, End: 22},
+	}
+	dumpTokens(t, tokens)
+	assert.Equal(expected, tokens)
+	assert.True(st2.Equal(itTmp.State()))
+	//fmt.Printf("it2 state: %s\n", st2)
+	//fmt.Printf("itTmp state: %s\n", itTmp.State())
 
 }

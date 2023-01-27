@@ -1,6 +1,9 @@
 package syn
 
-import "fmt"
+import (
+	"bytes"
+	"fmt"
+)
 
 type offsetMap struct {
 	transitions []int
@@ -17,31 +20,64 @@ func (o *offsetMap) iterator() offsetIterator {
 // offsetIterator is used to get the original length of tokens
 // before sequence \r\n was converted to \n
 type offsetIterator struct {
-	transitions []int
-	offset      int
+	transitions         []int
+	nextTransitionIndex int
+	offset              int
 }
 
-// OriginalLen returns the original length of the token tok in runes.
-// This function must be called with each token being iterated over in order.
-// Only one of OriginalLen or OriginalLenRunes may be called on a single token
-// in the steam.
 func (o *offsetIterator) Offset() int {
 	return o.offset
 }
 
 func (o *offsetIterator) Advance(length int) {
+	if length >= 0 {
+		o.forward(length)
+	} else {
+		o.backward(length)
+	}
+}
+
+func (o *offsetIterator) forward(length int) {
 	newOffset := o.offset + length
-	newOffset += o.transitionsCrossed(newOffset)
+	newOffset += o.transitionsCrossedForward(newOffset)
 	o.offset = newOffset
 }
 
-func (o *offsetIterator) transitionsCrossed(newOffset int) int {
+func (o *offsetIterator) backward(length int) {
+	newOffset := o.offset + length
+	newOffset -= o.transitionsCrossedBackward(newOffset)
+}
+
+func (o *offsetIterator) transitionsCrossedForward(newOffset int) int {
 	c := 0
-	for len(o.transitions) > 0 && o.transitions[0] < newOffset {
+	for o.nextTransitionIndex < len(o.transitions) && o.transitions[o.nextTransitionIndex] < newOffset {
+		o.nextTransitionIndex++
 		c++
 		newOffset++
-		o.transitions = o.transitions[1:]
 	}
+	/*
+		for len(o.transitions) > 0 && o.transitions[0] < newOffset {
+			c++
+			newOffset++
+			o.transitions = o.transitions[1:]
+		}*/
+	return c
+}
+
+func (o *offsetIterator) transitionsCrossedBackward(newOffset int) int {
+	c := 0
+	next := o.nextTransitionIndex - 1
+	for next >= 0 && o.transitions[next] > newOffset {
+		next--
+		c++
+		newOffset--
+	}
+	/*
+	   for len(o.transitions) > 0 && o.transitions[0] < newOffset {
+	     c++
+	     newOffset++
+	     o.transitions = o.transitions[1:]
+	   }*/
 	return c
 }
 
@@ -53,6 +89,20 @@ func (o offsetIterator) Clone() offsetIterator {
 		offset:      o.offset,
 		transitions: t,
 	}
+}
+
+func (i offsetIterator) equal(o offsetIterator) bool {
+	return i.transitionsEqual(o) &&
+		i.offset == o.offset
+}
+
+func (iter offsetIterator) transitionsEqual(o offsetIterator) bool {
+	for i, t := range iter.transitions {
+		if t != o.transitions[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // adjustForLF is an Iterator decorator that adjusts the values of the token's Start, End and Value
@@ -86,9 +136,16 @@ func (a *offsetAdjuster) Next() (tok Token, err error) {
 	tok.Start = a.offsetIter.Offset()
 	a.offsetIter.Advance(l)
 	if a.offsetIter.Offset() < tok.Start {
-		err = fmt.Errorf("*offsetAdjuster.Next: offsetIter returned an offset that is invalid. "+
+		err = fmt.Errorf("*offsetAdjuster.Next: offsetIter returned an offset that is invalid: offset is before token start. "+
 			"offset: %d tok: %s",
 			a.offsetIter.Offset(), tok)
+		return
+	}
+	if a.offsetIter.Offset() > len(a.text) {
+		err = fmt.Errorf("*offsetAdjuster.Next: offsetIter returned an offset that is invalid: offset is >= text length. "+
+			"offset: %d tok: '%s' tok length: %d text length: %d. Transitions: %v. Text: '%s'",
+			a.offsetIter.Offset(), tok, tok.Length(), len(a.text), a.offsetIter.transitions, string(a.text))
+		return
 	}
 	tok.End = a.offsetIter.Offset()
 	tok.Value = a.text[tok.Start:tok.End]
@@ -96,24 +153,60 @@ func (a *offsetAdjuster) Next() (tok Token, err error) {
 	return
 }
 
-func (c *offsetAdjuster) State() interface{} {
-	return offsetAdjusterState{
+func (c *offsetAdjuster) State() IteratorState {
+	return &offsetAdjusterState{
 		iterState:  c.it.State(),
 		offsetIter: c.offsetIter.Clone(),
-		text:       c.text,
+		//text:       c.text,
 	}
 }
 
-func (c *offsetAdjuster) SetState(s interface{}) {
-	state := s.(offsetAdjusterState)
+func (c *offsetAdjuster) SetState(s IteratorState) {
+	state := s.(*offsetAdjusterState)
 
 	c.it.SetState(state.iterState)
 	c.offsetIter = state.offsetIter.Clone()
-	c.text = state.text
+	//c.text = state.text // Don't set text because it might have changed
 }
 
 type offsetAdjusterState struct {
-	iterState  interface{}
+	iterState  IteratorState
 	offsetIter offsetIterator
 	text       []rune
+}
+
+func (s offsetAdjusterState) Equal(o IteratorState) bool {
+	a, ok := o.(*offsetAdjusterState)
+	if !ok {
+		return false
+	}
+
+	return s.iterState.Equal(a.iterState) && s.offsetIter.equal(a.offsetIter)
+}
+
+func (s *offsetAdjusterState) SetIndex(i int) {
+	s.offsetIter.offset = i
+	s.iterState.SetIndex(i)
+}
+
+func (s *offsetAdjusterState) AddToIndex(i int) {
+	s.offsetIter.offset += i
+	s.iterState.AddToIndex(i)
+	fmt.Printf("offsetAdjusterState: advancing backwards by %d\n", i)
+	s.offsetIter.Advance(i)
+}
+
+func (s offsetAdjusterState) String() string {
+	var buf bytes.Buffer
+
+	fmt.Fprintf(&buf, "offsetAdjusterState: \n")
+	fmt.Fprintf(&buf, "  text: ...\n")
+	fmt.Fprintf(&buf, "  offsetIter: %#v\n", s.offsetIter)
+
+	st, ok := s.iterState.(fmt.Stringer)
+	if ok {
+		fmt.Fprintf(&buf, "  iterState:\n%s", st.String())
+	}
+
+	return buf.String()
 }

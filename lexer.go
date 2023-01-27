@@ -74,9 +74,31 @@ func NewLexerFromXML(rdr io.Reader) (*Lexer, error) {
 }
 
 func (l *Lexer) Tokenise(text []rune) Iterator {
+	return l.TokeniseAt(text, nil)
+}
+
+func (l *Lexer) TokeniseAt(text []rune, state IteratorState) Iterator {
 	stripped, offsetMap := ensureLF(text)
 	innerIter := newIterator(stripped, l.rules)
-	outerIter := adjustForLF(text, innerIter, offsetMap.iterator())
+	// TODO: when we use coalesce and we save the state, the coalescer state is actually
+	// 1 or more tokens ahead of what has been returned during iteration so far, and the
+	// coalescer's stored token(s) match the previous unmodified text.
+	// How can we update the coalescer when we change the text so that it knows if it's
+	// internal token is still valid?
+
+	outerIter := coalesce(adjustForLF(text, innerIter, offsetMap.iterator()))
+
+	//outerIter := adjustForLF(text, innerIter, offsetMap.iterator())
+	if state != nil {
+		if cState, ok := state.(*coalescerState); ok {
+			if cState.accumSet {
+				cState.accumSet = false
+				cState.AddToIndex(-cState.accum.Length())
+			}
+		}
+		outerIter.SetState(state)
+	}
+	//fmt.Printf("Lexer.TokeniseAt: text: %s\n", string(text))
 	return outerIter
 }
 

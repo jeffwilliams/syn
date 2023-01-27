@@ -10,7 +10,7 @@ func TestStack(t *testing.T) {
 
 	var empty state
 
-	s := NewStack()
+	s := newStack()
 	assert.Equal(0, s.Len())
 	s.Pop(1)
 	assert.Equal(empty, s.Top())
