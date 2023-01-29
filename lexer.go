@@ -1,10 +1,8 @@
 // Package syn implements a syntax highlighter meant to be used in text editors.
 //
 // The syn package exports a Lexer type which can be used to lex text for a specific language
-// and return an Iterator that can iterate over the Tokens of the text. The state of the iteration
-// can be saved and later used to restart iteration from the saved point. This is useful in text editors
-// to re-highlight a subset of the text that has been modified rather than the entire text by iterating
-// starting with the saved state rather than from the beginning of the text.
+// and return an Iterator that can iterate over the Tokens of the text. Each step in the iteration parses
+// the next token at that time.
 //
 // Lexers are normally created using the lexers subpackage. For example:
 //
@@ -74,10 +72,11 @@ func NewLexerFromXML(rdr io.Reader) (*Lexer, error) {
 }
 
 func (l *Lexer) Tokenise(text []rune) Iterator {
-	return l.TokeniseAt(text, nil)
+	return l.tokeniseAt(text, nil)
 }
 
-func (l *Lexer) TokeniseAt(text []rune, state IteratorState) Iterator {
+// tokeniseAt is currently broken. It only works when state is nil.
+func (l *Lexer) tokeniseAt(text []rune, state IteratorState) Iterator {
 	stripped, offsetMap := ensureLF(text)
 	innerIter := newIterator(stripped, l.rules)
 	// TODO: when we use coalesce and we save the state, the coalescer state is actually
@@ -262,8 +261,8 @@ func (lb *lexerBuilder) checkRule(r *config.Rule) error {
 	// 2. An Include
 	// 3. A ByGroups
 
-	if r.Pattern == "" && r.Push == nil && r.Include == nil {
-		return fmt.Errorf("Rule has no pattern and no push statement. This is not supported.")
+	if r.Pattern == "" && r.Push == nil && r.Pop == nil && r.Include == nil {
+		return fmt.Errorf("Rule has no pattern, no include, no push and no pop statement. This is not supported.")
 	}
 
 	if r.Pop != nil && r.Push != nil {

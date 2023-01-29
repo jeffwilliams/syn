@@ -3,8 +3,6 @@ package syn
 //go:generate go run github.com/dmarkham/enumer -text -type TokenType
 
 // TokenType is the type of token to highlight.
-//
-// It is also an Emitter, emitting a single token of itself
 type TokenType int
 
 // Set of TokenTypes.
