@@ -139,6 +139,12 @@ func (i *iterator) nextInReadyToMatchStage() (tok Token, err error) {
 		return i.Next()
 	}
 
+	if rule.IsUseSelf() {
+		groupText := i.groupText(match.GroupByNumber(0))
+		i.prepareToUseSublexer(rule, groupText, 0, rule.useSelfState)
+		return i.Next()
+	}
+
 	if rule.tok == 0 {
 		debugf("iterator.nextInReadyToMatchStage(%d): rule provides no token\n", i.depth)
 		tok = Token{}
@@ -189,7 +195,7 @@ func (it *iterator) nextInWithinGroupsStage() (tok Token, err error) {
 	groupText := text[capture.start:capture.end()]
 	if byGroup.IsUseSelf() {
 		debugf("Lexer.nextInWithinGroupsStage(%d): bygroups %d is a use-self. Creating sub lexer\n", it.depth, it.state.groupIndex)
-		it.prepareToUseSublexer(groupText, &capture, &byGroup)
+		it.prepareToUseSublexer(it.state.rule, groupText, capture.start, byGroup.useSelfState)
 		return it.Next()
 	}
 
@@ -210,19 +216,25 @@ func (it *iterator) nextInWithinGroupsStage() (tok Token, err error) {
 	return tok, nil
 }
 
-func (it *iterator) prepareToUseSublexer(groupText []rune, capture *capture, byGroup *byGroupElement) {
+func (it *iterator) prepareToUseSublexer(rule *rule, groupText []rune, captureStart int, state string) {
 	lex := newIterator(groupText, it.rules)
-	lex.setOffset(it.state.index + capture.start)
+	lex.setOffset(it.state.index + captureStart)
 	lex.depth = it.depth + 1
-	lex.pushState(byGroup.useSelfState)
+	lex.pushState(state)
 	it.state.stage = stageRunningSublexer
 	it.sublexers = append(it.sublexers, lex)
+	it.state.rule = rule
 }
 
 func (it *iterator) completeGroupIteration() {
 	it.handleRuleState(it.state.rule)
 	it.state.stage = stageReadyToMatch
-	it.state.index += it.state.groups[0].length // Move past the length of the match
+	if len(it.state.byGroups) == 0 {
+		// byGroups has zero elements when this is a usingself that is not within groups; it's against the complete match of the rule's pattern
+		it.state.index += len(it.text)
+	} else {
+		it.state.index += it.state.groups[0].length // Move past the length of the match
+	}
 	it.clearGroupIterationInfo()
 }
 
@@ -382,8 +394,10 @@ const (
 type lexerState struct {
 	stack *stack
 	// index is the index of the next input rune to process
-	index  int
-	stage  stage
+	index int
+	stage stage
+	// offset is the absolute offset of where the beginning of the text parsed by the current lexer
+	// represents. It's used when a sublexer is used to lex a subsequence of the text.
 	offset int
 
 	groups     []capture        // Groups from the last match. Used when we need to iterate over bygroups. Each entry is a start/end of group.

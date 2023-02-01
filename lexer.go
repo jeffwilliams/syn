@@ -67,6 +67,8 @@ func NewLexerFromXML(rdr io.Reader) (*Lexer, error) {
 		return nil, err
 	}
 
+	debugf("NewLexerFromXML: lexer rules:\n%s\n", lex.rules)
+
 	return lex, nil
 
 }
@@ -202,57 +204,80 @@ func (lb *lexerBuilder) ruleSequence(crs []config.Rule) ([]rule, error) {
 			return nil, fmt.Errorf("rule index %d: %w", i, err)
 		}
 
-		pat := `\A` + cr.Pattern
-		re, err := regexp2.Compile(pat, regexp2.None)
+		r, err := lb.makeRule(cr.Pattern)
 		if err != nil {
 			return nil, err
 		}
-		re.MatchTimeout = time.Millisecond * 250
 
-		r := rule{
-			pattern: re,
-		}
-
-		if cr.Token != nil {
-			typ, err := TokenTypeString(cr.Token.Type)
-			if err != nil {
-				return nil, err
-			}
-			r.tok = typ
-		}
-
-		if cr.Pop != nil {
-			r.popDepth = cr.Pop.Depth
-		}
-
-		if cr.Push != nil {
-			r.pushState = cr.Push.State
-		}
-
-		if cr.Include != nil {
-			r.include = cr.Include.State
-		}
-
-		if cr.ByGroups != nil {
-			for _, e := range cr.ByGroups.ByGroupsElements {
-				ge := byGroupElement{}
-				switch v := e.V.(type) {
-				case *config.Token:
-					typ, err := TokenTypeString(v.Type)
-					if err != nil {
-						return nil, err
-					}
-					ge.tok = typ
-				case *config.UsingSelf:
-					ge.useSelfState = v.State
-				}
-				r.byGroups = append(r.byGroups, ge)
-			}
+		err = lb.setRuleFieldsFrom(&r, &cr)
+		if err != nil {
+			return nil, err
 		}
 
 		rules[i] = r
 	}
 	return rules, nil
+}
+
+func (lb *lexerBuilder) makeRule(pattern string) (r rule, err error) {
+	pat := `\A` + pattern
+
+	var re *regexp2.Regexp
+	re, err = regexp2.Compile(pat, regexp2.None)
+	if err != nil {
+		return
+	}
+	re.MatchTimeout = time.Millisecond * 250
+
+	r = rule{
+		pattern: re,
+	}
+	return
+}
+
+func (lb *lexerBuilder) setRuleFieldsFrom(r *rule, cr *config.Rule) error {
+	if cr.Token != nil {
+		typ, err := TokenTypeString(cr.Token.Type)
+		if err != nil {
+			return err
+		}
+		r.tok = typ
+	}
+
+	if cr.Pop != nil {
+		r.popDepth = cr.Pop.Depth
+	}
+
+	if cr.Push != nil {
+		r.pushState = cr.Push.State
+	}
+
+	if cr.Include != nil {
+		r.include = cr.Include.State
+	}
+
+	if cr.ByGroups != nil {
+		for _, e := range cr.ByGroups.ByGroupsElements {
+			ge := byGroupElement{}
+			switch v := e.V.(type) {
+			case *config.Token:
+				typ, err := TokenTypeString(v.Type)
+				if err != nil {
+					return err
+				}
+				ge.tok = typ
+			case *config.UsingSelf:
+				ge.useSelfState = v.State
+			}
+			r.byGroups = append(r.byGroups, ge)
+		}
+	}
+
+	if cr.UsingSelf != nil {
+		r.useSelfState = cr.UsingSelf.State
+	}
+
+	return nil
 }
 
 func (lb *lexerBuilder) checkRule(r *config.Rule) error {
@@ -289,32 +314,47 @@ func (lb *lexerBuilder) checkRule(r *config.Rule) error {
 
 func (lb *lexerBuilder) resolveIncludes() error {
 
+	newRules := map[string]state{}
+
 	for name, st := range lb.lexer.rules.rules {
-
-		// TODO: to reduce garbage, we could just build this when the first include is reached
-		// If there are none there is no need to make a new slice.
-		newSeq := make([]rule, 0, len(st.rules))
-
-		for _, rule := range st.rules {
-			if rule.include != "" {
-				includeState, ok := lb.lexer.rules.Get(rule.include)
-				if !ok {
-					return fmt.Errorf("A rule includes the state named '%s' but there is no such state in the lexer", rule.include)
-				}
-
-				for _, e := range includeState.rules {
-					newSeq = append(newSeq, e)
-				}
-				continue
-			}
-
-			newSeq = append(newSeq, rule)
+		list, err := lb.resolveIncludesIn(st.rules)
+		if err != nil {
+			return err
 		}
+		st.rules = list
 
-		lb.lexer.rules.rules[name] = state{name, newSeq}
+		newRules[name] = st
 	}
+	lb.lexer.rules.rules = newRules
 
 	return nil
+}
+
+func (lb *lexerBuilder) resolveIncludesIn(rules []rule) (newRules []rule, err error) {
+	newRules = make([]rule, 0, len(rules))
+
+	for _, rl := range rules {
+		if rl.include != "" {
+			includeState, ok := lb.lexer.rules.Get(rl.include)
+			if !ok {
+				err = fmt.Errorf("A rule includes the state named '%s' but there is no such state in the lexer", rl.include)
+				return
+			}
+
+			var resolved []rule
+			resolved, err = lb.resolveIncludesIn(includeState.rules)
+			if err != nil {
+				return
+			}
+			newRules = append(newRules, resolved...)
+
+			continue
+		}
+
+		newRules = append(newRules, rl)
+	}
+
+	return
 }
 
 type prioritisedLexers []*Lexer

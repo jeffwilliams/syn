@@ -34,12 +34,13 @@ type State struct {
 }
 
 type Rule struct {
-	Pattern  string    `xml:"pattern,attr"`
-	Include  *Include  `xml:"include"`
-	Token    *Token    `xml:"token"`
-	Pop      *Pop      `xml:"pop"`
-	Push     *Push     `xml:"push"`
-	ByGroups *ByGroups `xml:"bygroups"`
+	Pattern   string     `xml:"pattern,attr"`
+	Include   *Include   `xml:"include"`
+	Token     *Token     `xml:"token"`
+	Pop       *Pop       `xml:"pop"`
+	Push      *Push      `xml:"push"`
+	ByGroups  *ByGroups  `xml:"bygroups"`
+	UsingSelf *UsingSelf `xml:"usingself"`
 }
 
 type Include struct {

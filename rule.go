@@ -1,6 +1,11 @@
 package syn
 
-import "github.com/dlclark/regexp2"
+import (
+	"bytes"
+	"fmt"
+
+	"github.com/dlclark/regexp2"
+)
 
 // state represents a state of the lexer. A state consists of a group of rules that are attempted
 // to be matched in order. A rule may push a new state onto a logical stack to change the set of rules
@@ -20,6 +25,16 @@ func (r state) match(text []rune) (*regexp2.Match, *rule) {
 		}
 	}
 	return nil, nil
+}
+
+func (s state) String() string {
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "State %s:\n", s.name)
+	for i, v := range s.rules {
+		fmt.Fprintf(&buf, "  rule %d: %s\n", i, v.String())
+	}
+	return buf.String()
+
 }
 
 // rules is the set of rules in a Lexer
@@ -44,15 +59,50 @@ func (r *rules) Get(stateName string) (stat state, ok bool) {
 	return
 }
 
+func (r rules) String() string {
+	var buf bytes.Buffer
+	for _, v := range r.rules {
+		buf.WriteString(v.String())
+	}
+	return buf.String()
+}
+
 // A Rule specifies a regexp to match when lexing at the current position in the text, and an action
 // to take if the regexp matches.
 type rule struct {
-	pattern   *regexp2.Regexp
-	tok       TokenType
-	pushState string
-	popDepth  int
-	byGroups  []byGroupElement
-	include   string
+	pattern      *regexp2.Regexp
+	tok          TokenType
+	pushState    string
+	popDepth     int
+	byGroups     []byGroupElement
+	include      string
+	useSelfState string
+}
+
+func (r rule) String() string {
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "(rule /%s/ tok: %s", r.pattern, r.tok)
+	if r.pushState != "" {
+		fmt.Fprintf(&buf, "  push: %s", r.pushState)
+	}
+	fmt.Fprintf(&buf, "  pop: %d", r.popDepth)
+	if r.byGroups != nil {
+		fmt.Fprintf(&buf, "  bygroups size: %d", len(r.byGroups))
+	}
+	if r.include != "" {
+		fmt.Fprintf(&buf, "  include: %s", r.include)
+	}
+	if r.useSelfState != "" {
+		fmt.Fprintf(&buf, "  usingself: %s", r.useSelfState)
+	}
+	fmt.Fprintf(&buf, ")")
+	return buf.String()
+}
+
+// IsUseSelf returns true if the Rule specifies that the group should be handled by lexing
+// the group text with a new instance of the lexer.
+func (r rule) IsUseSelf() bool {
+	return r.useSelfState != ""
 }
 
 // Match attempts to match the rule. If it succeeds it returns a slice
