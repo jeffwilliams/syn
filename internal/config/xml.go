@@ -41,6 +41,7 @@ type Rule struct {
 	Push      *Push      `xml:"push"`
 	ByGroups  *ByGroups  `xml:"bygroups"`
 	UsingSelf *UsingSelf `xml:"usingself"`
+	Combined  *Combined  `xml:"combined"`
 }
 
 type Include struct {
@@ -95,4 +96,8 @@ func DecodeLexer(rdr io.Reader) (lex *Lexer, err error) {
 
 	err = dec.Decode(&lex)
 	return
+}
+
+type Combined struct {
+	States []string `xml:"state,attr"`
 }

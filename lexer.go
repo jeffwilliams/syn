@@ -12,10 +12,12 @@
 package syn
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/dlclark/regexp2"
@@ -193,6 +195,13 @@ func (lb *lexerBuilder) build() error {
 		lb.lexer.rules.AddState(s)
 	}
 
+	for _, xmlState := range lb.cfg.Rules.States {
+		err := lb.createCombinedStates(&xmlState)
+		if err != nil {
+			return fmt.Errorf("For state %s: %w", xmlState.Name, err)
+		}
+	}
+
 	return nil
 }
 
@@ -208,6 +217,8 @@ func (lb *lexerBuilder) ruleSequence(crs []config.Rule) ([]rule, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		lb.updatePushForCombinedState(&r, &cr)
 
 		err = lb.setRuleFieldsFrom(&r, &cr)
 		if err != nil {
@@ -233,6 +244,70 @@ func (lb *lexerBuilder) makeRule(pattern string) (r rule, err error) {
 		pattern: re,
 	}
 	return
+}
+
+// updatePushForCombinedState helps to handle the <combined> element. The combined element
+// under a rule requests the lexer to combine all the rules from two states to make a new
+// state, and then have the rule push that state. This function replaces the push statement
+// on the rule to push the combined state's name
+func (lb *lexerBuilder) updatePushForCombinedState(r *rule, cr *config.Rule) {
+	if cr.Combined == nil {
+		return
+	}
+
+	stateName := lb.combinedStateName(cr.Combined)
+	r.pushState = stateName
+}
+
+// createCombinedStates helps to handle the <combined> element. The combined element
+// under a rule requests the lexer to combine all the rules from two states to make a new
+// state, and then have the rule push that state. This function creates the combined state
+// and adds it to the lexer's states. The states the combined element references must exist
+// by the time this is called.
+func (lb *lexerBuilder) createCombinedStates(state *config.State) error {
+	for _, rule := range state.Rules {
+		err := lb.createCombinedStateInRule(state.Name, &rule)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (lb *lexerBuilder) createCombinedStateInRule(stateName string, cr *config.Rule) error {
+	if cr.Combined == nil {
+		return nil
+	}
+
+	combinedStateName := lb.combinedStateName(cr.Combined)
+	if lb.lexer.rules.Contains(combinedStateName) {
+		return nil
+	}
+
+	combinedState := state{
+		name: combinedStateName,
+	}
+
+	for _, substateName := range cr.Combined.States {
+		substate, ok := lb.lexer.rules.Get(substateName)
+		if !ok {
+			return fmt.Errorf("The state %s refered to from a combined element under state %s does not exist",
+				substate, stateName)
+		}
+
+		combinedState.rules = append(combinedState.rules, substate.rules...)
+	}
+
+	lb.lexer.rules.AddState(combinedState)
+
+	return nil
+}
+
+func (lb *lexerBuilder) combinedStateName(c *config.Combined) string {
+	var buf bytes.Buffer
+	buf.WriteString("__combined_")
+	buf.WriteString(strings.Join(c.States, "__"))
+	return buf.String()
 }
 
 func (lb *lexerBuilder) setRuleFieldsFrom(r *rule, cr *config.Rule) error {
@@ -307,6 +382,10 @@ func (lb *lexerBuilder) checkRule(r *config.Rule) error {
 		if r.ByGroups != nil {
 			return fmt.Errorf("a rule has both an Include and a ByGroups")
 		}
+	}
+
+	if r.Combined != nil && (r.Push != nil || r.Pop != nil || r.Include != nil) {
+		return fmt.Errorf("a rule has both a Combined and either a Push, Pop or Include")
 	}
 
 	return nil

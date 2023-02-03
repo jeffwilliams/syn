@@ -59,6 +59,11 @@ func (r *rules) Get(stateName string) (stat state, ok bool) {
 	return
 }
 
+func (r *rules) Contains(stateName string) (ok bool) {
+	_, ok = r.rules[stateName]
+	return
+}
+
 func (r rules) String() string {
 	var buf bytes.Buffer
 	for _, v := range r.rules {

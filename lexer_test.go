@@ -119,7 +119,7 @@ import os
 # comment
 import sys
 def f():
-    pass
+    print "test"
 `
 
 	assert := assert.New(t)
@@ -176,8 +176,11 @@ def f():
 		{Type: NameFunction, Value: []rune("f"), Start: 36, End: 37},
 		{Type: Punctuation, Value: []rune("():"), Start: 37, End: 40},
 		{Type: Text, Value: []rune("\n    "), Start: 40, End: 45},
-		{Type: Keyword, Value: []rune("pass"), Start: 45, End: 49},
-		{Type: Text, Value: []rune("\n"), Start: 49, End: 50},
+		{Type: NameBuiltin, Value: []rune("print"), Start: 45, End: 50},
+		{Type: Text, Value: []rune(" "), Start: 50, End: 51},
+		{Type: LiteralStringAffix, Value: []rune(""), Start: 51, End: 51},
+		{Type: LiteralStringDouble, Value: []rune("\"test\""), Start: 51, End: 57},
+		{Type: Text, Value: []rune("\n"), Start: 57, End: 58},
 	}
 
 	assert.Equal(expected, tokens)

@@ -157,7 +157,11 @@ func (i *iterator) nextInReadyToMatchStage() (tok Token, err error) {
 			aLittleText(i.text, i.state.index+g.Length))
 		i.state.index += g.Length
 	}
-	i.handleRuleState(rule)
+
+	err = i.handleRuleState(rule)
+	if err != nil {
+		return
+	}
 
 	if rule.tok == 0 {
 		debugf("iterator.nextInReadyToMatchStage(%d): recursing to generate token\n", i.depth)
@@ -207,7 +211,10 @@ func (it *iterator) nextInWithinGroupsStage() (tok Token, err error) {
 
 	if it.state.groupIndex >= len(it.state.byGroups) {
 		debugf("iterator.nextInWithinGroupsStage(%d): reached end of the groups, will switch to full match stage\n", it.depth)
-		it.handleRuleState(it.state.rule)
+		err = it.handleRuleState(it.state.rule)
+		if err != nil {
+			return
+		}
 		it.state.stage = stageReadyToMatch
 		it.state.index += it.state.groups[0].length // Move past the length of the match
 		it.clearGroupIterationInfo()
@@ -226,8 +233,11 @@ func (it *iterator) prepareToUseSublexer(rule *rule, groupText []rune, captureSt
 	it.state.rule = rule
 }
 
-func (it *iterator) completeGroupIteration() {
-	it.handleRuleState(it.state.rule)
+func (it *iterator) completeGroupIteration() error {
+	err := it.handleRuleState(it.state.rule)
+	if err != nil {
+		return err
+	}
 	it.state.stage = stageReadyToMatch
 	if len(it.state.byGroups) == 0 {
 		// byGroups has zero elements when this is a usingself that is not within groups; it's against the complete match of the rule's pattern
@@ -236,6 +246,7 @@ func (it *iterator) completeGroupIteration() {
 		it.state.index += it.state.groups[0].length // Move past the length of the match
 	}
 	it.clearGroupIterationInfo()
+	return nil
 }
 
 func (it *iterator) clearGroupIterationInfo() {
@@ -263,7 +274,10 @@ func (it *iterator) nextInSublexer() (tok Token, err error) {
 		debugf("iterator.nextInSublexer(%d): Setting groupindex to %d (%d/%d)\n", it.depth, it.state.groupIndex, it.state.groupIndex+1, len(it.state.byGroups))
 		if it.state.groupIndex >= len(it.state.byGroups) {
 			debugf("iterator.nextInSublexer(%d): Reached end of groups, will switch to full match stage\n", it.depth)
-			it.completeGroupIteration()
+			err = it.completeGroupIteration()
+			if err != nil {
+				return
+			}
 		}
 		return it.Next()
 	}
@@ -313,24 +327,24 @@ func (it *iterator) boundsOfGroup(index, length int) (start, end int) {
 		it.state.index + it.state.offset + index + length
 }
 
-func (it *iterator) handleRuleState(rule *rule) {
+func (it *iterator) handleRuleState(rule *rule) error {
 	if rule.popDepth == 0 && rule.pushState == "" {
-		return
+		return nil
 	}
 
 	if rule.popDepth > 0 {
 		debugf("iterator.handleRuleState(%d): Popping %d states", it.depth, rule.popDepth)
 		it.state.stack.Pop(rule.popDepth)
-		return
+		return nil
 	}
 
 	s, ok := it.rules.rules[rule.pushState]
 	if !ok {
-		msg := fmt.Sprintf("syn.iterator: a rule refers to a state %s that doesn't exist", rule.pushState)
-		panic(msg)
+		return fmt.Errorf("syn.iterator: a rule refers to a state %s that doesn't exist", rule.pushState)
 	}
 	debugf("iterator.handleRuleState(%d): pushing state %s", it.depth, rule.pushState)
 	it.state.stack.Push(s)
+	return nil
 }
 
 func (it *iterator) groupText(g *regexp2.Group) []rune {

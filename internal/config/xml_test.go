@@ -47,6 +47,7 @@ func TestXmlDecode(t *testing.T) {
           <token type="Punctuation"/>
         </bygroups>
         <push state="function"/>
+        <combined state="a" state="b"/>
       </rule>
     </state>
   </rules>
@@ -124,7 +125,8 @@ func TestXmlDecode(t *testing.T) {
 								},
 							},
 						},
-						Push: &Push{State: "function"},
+						Push:     &Push{State: "function"},
+						Combined: &Combined{States: []string{"a", "b"}},
 					},
 				},
 			},
