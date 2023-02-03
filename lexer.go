@@ -223,7 +223,7 @@ func (lb *lexerBuilder) makeRule(pattern string) (r rule, err error) {
 	pat := `\A` + pattern
 
 	var re *regexp2.Regexp
-	re, err = regexp2.Compile(pat, regexp2.None)
+	re, err = regexp2.Compile(pat, regexp2.Multiline)
 	if err != nil {
 		return
 	}
