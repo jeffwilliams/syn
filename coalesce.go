@@ -24,7 +24,7 @@ func (c *coalescer) Next() (tok Token, err error) {
 
 	for {
 		tok, err = c.it.Next()
-		if err != nil || c.accum.Type == EOFType {
+		if err != nil || (c.accumSet && c.accum.Type == EOFType) {
 			return
 		}
 
