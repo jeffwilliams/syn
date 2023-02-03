@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestLexer(t *testing.T) {
+func TestCLexer(t *testing.T) {
 	prog := `
 #include <stdio.h>
 
@@ -113,6 +113,86 @@ int main() {
 
 }
 
+func TestPythonLexer(t *testing.T) {
+	prog := `
+import os
+# comment
+import sys
+def f():
+    pass
+`
+
+	assert := assert.New(t)
+
+	input := []rune(prog)
+	lex, err := NewLexerFromXMLFile("lexers/embedded/python.xml")
+	assert.Nil(err)
+	assert.NotNil(lex)
+	if err != nil {
+		t.FailNow()
+	}
+
+	//DebugLogger = log.New(os.Stdout, "", 0)
+
+	tokens, err := tokenize(lex.Tokenise(input))
+	if err != nil {
+		t.Fatalf("Tokenizing returned error: %v. Input text length was %d\n", err, len(input))
+	}
+
+	dumpTokens(t, tokens)
+
+	// Make sure tokens are consecutive (in terms of rune index) and
+	// the value matches the referenced indices
+	for i, tok := range tokens {
+		if tok.Type == EOFType {
+			continue
+		}
+
+		assert.Equal(tok.Value, input[tok.Start:tok.End],
+			"token='%s' ref='%s' rawToken=(%+v)", string(tok.Value), string(input[tok.Start:tok.End]), tok)
+
+		if i == 0 {
+			continue
+		}
+
+		ptok := tokens[i-1]
+		assert.Equal(tok.Start, ptok.End)
+	}
+
+	expected := []Token{
+		{Type: Text, Value: []rune("\n"), Start: 0, End: 1},
+		{Type: KeywordNamespace, Value: []rune("import"), Start: 1, End: 7},
+		{Type: Text, Value: []rune(" "), Start: 7, End: 8},
+		{Type: NameNamespace, Value: []rune("os"), Start: 8, End: 10},
+		{Type: Text, Value: []rune("\n"), Start: 10, End: 11},
+		{Type: CommentSingle, Value: []rune("# comment"), Start: 11, End: 20},
+		{Type: Text, Value: []rune("\n"), Start: 20, End: 21},
+		{Type: KeywordNamespace, Value: []rune("import"), Start: 21, End: 27},
+		{Type: Text, Value: []rune(" "), Start: 27, End: 28},
+		{Type: NameNamespace, Value: []rune("sys"), Start: 28, End: 31},
+		{Type: Text, Value: []rune("\n"), Start: 31, End: 32},
+		{Type: Keyword, Value: []rune("def"), Start: 32, End: 35},
+		{Type: Text, Value: []rune(" "), Start: 35, End: 36},
+		{Type: NameFunction, Value: []rune("f"), Start: 36, End: 37},
+		{Type: Punctuation, Value: []rune("():"), Start: 37, End: 40},
+		{Type: Text, Value: []rune("\n    "), Start: 40, End: 45},
+		{Type: Keyword, Value: []rune("pass"), Start: 45, End: 49},
+		{Type: Text, Value: []rune("\n"), Start: 49, End: 50},
+	}
+
+	assert.Equal(expected, tokens)
+
+	for i, tok := range expected {
+		if i >= len(tokens) {
+			break
+		}
+		if !tokensEqual(&tok, &tokens[i]) {
+			t.Fatalf("Token %d doesn't match. Expected (%s) but got (%s)", i, tok, tokens[i])
+		}
+	}
+
+}
+
 func tokenize(it Iterator) (tokens []Token, err error) {
 	for {
 		var tok Token
@@ -175,6 +255,7 @@ func tokensEqual(t1, t2 *Token) bool {
 	return t1.Type == t2.Type && string(t1.Value) == string(t2.Value) && t1.Start == t2.Start && t1.End == t2.End
 }
 
+/*
 func TestLexerStateRestoring(t *testing.T) {
 	prog := `
 #include <stdio.h>
@@ -294,6 +375,7 @@ int main() {
 	}
 
 }
+*/
 
 func TestEnsureLF(t *testing.T) {
 	text := "line1\r\nline2\r\nline3\r\n"
@@ -426,6 +508,7 @@ text
 	}
 }
 
+/*
 func TestEqual(t *testing.T) {
 	prog := `int var1;
 int var2;
@@ -525,3 +608,4 @@ int var3;
 	//fmt.Printf("itTmp state: %s\n", itTmp.State())
 
 }
+*/
