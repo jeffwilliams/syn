@@ -90,6 +90,12 @@ func (i *iterator) pushState(state string) error {
 	return nil
 }
 
+// Next returns the next token, or an error if a fatal error occurred when tokenizing. The token type is
+// set to EOFType when the end of the input is reached and no more tokens will be returned.
+//
+// Next may return a token with type Error but not set error. In this case something went wrong tokenizing
+// but Next will attempt to reset state and keep tokenizing in an attempt to provide _something_ useful for
+// the rest of the input. Callers can decide whether to continue or not in this case.
 func (i *iterator) Next() (Token, error) {
 	i.pushRootStateIfNeeded()
 
@@ -131,7 +137,7 @@ func (i *iterator) nextInReadyToMatchStage() (tok Token, err error) {
 			i.state.stack.Clear()
 			i.pushRootStateIfNeeded()
 		}
-		return Token{Type: Error, Value: nil}, nil
+		return Token{Type: Error, Value: nil, Start: i.state.index - 1, End: i.state.index}, nil
 	}
 
 	if rule.byGroups != nil {

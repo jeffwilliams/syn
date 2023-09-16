@@ -128,7 +128,7 @@ func (a *offsetAdjuster) Next() (tok Token, err error) {
 		return
 	}
 
-	if tok.Type == EOFType || tok.Type == Error {
+	if tok.Type == EOFType {
 		return
 	}
 
