@@ -6,9 +6,9 @@
 //
 // Lexers are normally created using the lexers subpackage. For example:
 //
-//   import "github.com/jeffwilliams/syn/lexers"
+//	import "github.com/jeffwilliams/syn/lexers"
 //
-//   lexer = lexers.Get("Go")
+//	lexer = lexers.Get("Go")
 package syn
 
 import (
@@ -101,7 +101,6 @@ func (l *Lexer) tokeniseAt(text []rune, state IteratorState) Iterator {
 		}
 		outerIter.SetState(state)
 	}
-	//fmt.Printf("Lexer.TokeniseAt: text: %s\n", string(text))
 	return outerIter
 }
 
@@ -179,8 +178,8 @@ func (r lexerBuilder) makeMissingError(missing []string) error {
 	if missing == nil || len(missing) == 0 {
 		return nil
 	}
-	return fmt.Errorf("The following states are referred to from rules, but aren't defined: %v\n",
-		missing)
+	return fmt.Errorf("The following states are referred to from rules, but aren't defined: %s",
+		strings.Join(missing, ", "))
 }
 
 func (lb *lexerBuilder) build() error {

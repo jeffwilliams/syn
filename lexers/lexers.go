@@ -22,9 +22,8 @@ var GlobalLexerRegistry = func() *syn.LexerRegistry {
 	}
 	for _, path := range paths {
 		lex, err := syn.NewLexerFromXMLFS(embedded, path)
-		// TODO: save the errors here and allow retrieving them
 		if err != nil {
-			fmt.Printf("Error loading lexer %s: %s\n", path, err)
+			GlobalLexerLoadErrors = append(GlobalLexerLoadErrors, fmt.Errorf("Error loading lexer %s: %s", path, err))
 			continue
 		}
 		reg.Register(lex)
@@ -32,6 +31,8 @@ var GlobalLexerRegistry = func() *syn.LexerRegistry {
 	}
 	return reg
 }()
+
+var GlobalLexerLoadErrors []error
 
 // Names of all lexers, optionally including aliases.
 func Names(withAliases bool) []string {

@@ -192,7 +192,6 @@ func (s *offsetAdjusterState) SetIndex(i int) {
 func (s *offsetAdjusterState) AddToIndex(i int) {
 	s.offsetIter.offset += i
 	s.iterState.AddToIndex(i)
-	fmt.Printf("offsetAdjusterState: advancing backwards by %d\n", i)
 	s.offsetIter.Advance(i)
 }
 

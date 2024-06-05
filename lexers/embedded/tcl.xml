@@ -90,7 +90,7 @@
     <state name="params-in-bracket">
       <rule pattern="\]">
         <token type="Keyword"/>
-        <push state="#pop" state="#pop"/>
+        <pop depth="1"/>
       </rule>
       <rule>
         <include state="params"/>
@@ -140,7 +140,7 @@
     <state name="params-in-brace">
       <rule pattern="\}">
         <token type="Keyword"/>
-        <push state="#pop" state="#pop"/>
+        <pop depth="1"/>
       </rule>
       <rule>
         <include state="params"/>
@@ -177,7 +177,7 @@
     <state name="params-in-paren">
       <rule pattern="\)">
         <token type="Keyword"/>
-        <push state="#pop" state="#pop"/>
+        <pop depth="1"/>
       </rule>
       <rule>
         <include state="params"/>
