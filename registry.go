@@ -130,16 +130,27 @@ func (l *LexerRegistry) Match(filename string) *Lexer {
 }
 
 // Register a Lexer with the LexerRegistry.
-func (l *LexerRegistry) Register(lexer *Lexer) *Lexer {
+func (l *LexerRegistry) Register(lexer *Lexer) {
 	//lexer.SetRegistry(l)
 
 	config := lexer.cfg().Config
+	
+	toReplace := l.byName[config.Name]
 	l.byName[config.Name] = lexer
 	l.byName[strings.ToLower(config.Name)] = lexer
 	for _, alias := range config.Aliases {
 		l.byAlias[alias] = lexer
 		l.byAlias[strings.ToLower(alias)] = lexer
 	}
+	
+	if toReplace != nil {
+		for i, lex := range l.Lexers {
+			if lex == toReplace {
+				l.Lexers[i] = lexer
+				return
+			}	
+		}
+	}
+	
 	l.Lexers = append(l.Lexers, lexer)
-	return lexer
 }
