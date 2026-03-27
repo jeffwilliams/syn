@@ -1,0 +1,81 @@
+<lexer>
+  <config>
+    <name>Robot Framework</name>
+    <alias>robot</alias>
+    <filename>*.robot</filename>
+    <mime_type>text/x-robotframework</mime_type>
+  </config>
+  <rules>
+    <state name="root">
+      <rule>
+        <include state="whitespace"/>
+      </rule>
+      <rule pattern="^\*{3}\s*Settings\s*\*{3}">
+        <token type="Keyword"/>
+      </rule>
+      <rule pattern="^\*{3}\s*Test Cases\s*\*{3}">
+        <token type="Keyword"/>
+      </rule>
+      <rule pattern="^\*{3}\s*Variables\s*\*{3}">
+        <token type="Keyword"/>
+      </rule>
+      <rule pattern="^\*{3}\s*Keywords\s*\*{3}">
+        <token type="Keyword"/>
+      </rule>
+      <rule pattern="\[Documentation\]|\[Tags\]|\[Setup\]|\[Teardown\]|\[Template\]|\[Timeout\]">
+        <token type="Name"/>
+      </rule>
+      <rule pattern="#.*$">
+        <token type="Comment"/>
+      </rule>
+      <rule pattern="\$\{[^\}]+\}|\@{[^\}]+\}|&amp;\{[^\}]+\}">
+        <token type="NameVariable"/>
+      </rule>
+      <rule pattern="^\s+\[.*\]">
+        <token type="LiteralString"/>
+      </rule>
+      <rule pattern="\|\s*">
+        <token type="Punctuation"/>
+      </rule>
+      <rule>
+        <include state="keyword"/>
+      </rule>
+      <rule pattern=".">
+        <token type="Text"/>
+      </rule>
+    </state>
+    
+    <state name="keyword">
+      <rule pattern="^\s+\w+(\s+)+">
+        <token type="NameFunction"/>
+      </rule>
+      <rule pattern="\$\{[^\}]+\}|\@{[^\}]+\}|&amp;\{[^\}]+\}">
+        <token type="NameVariable"/>
+      </rule>
+      <rule pattern="\b(True|False|None|null|on|off)\b">
+        <token type="KeywordConstant"/>
+      </rule>
+      <rule pattern="&#34;(?:\\.|[^&#34;])*&#34;">
+        <token type="LiteralStringDouble"/>
+      </rule>
+      <rule pattern="&#39;(?:\\.|[^&#39;])*&#39;">
+        <token type="LiteralStringSingle"/>
+      </rule>
+      <rule pattern="\d+\.\d+|\d+">
+        <token type="LiteralNumber"/>
+      </rule>
+      <rule pattern="[=\-\+\*/%]">
+        <token type="Operator"/>
+      </rule>
+    </state>
+    
+    <state name="whitespace">
+      <rule pattern="\s+">
+        <token type="TextWhitespace"/>
+      </rule>
+      <rule pattern="\n+">
+        <token type="TextWhitespace"/>
+      </rule>
+    </state>
+  </rules>
+</lexer>
